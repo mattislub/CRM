@@ -1,11 +1,19 @@
-import { Receipt, Charge } from '../types';
+import { Charge } from '../types';
 
-const authHeaders = {
+const authHeaders: Record<string, string> = {
   "Content-Type": "application/json",
-  // TODO: הוסף את המפתחות האמיתיים מ-environment variables
-  // "x-api-key": process.env.VITE_TRANZILA_API_KEY,
-  // "Authorization": `Bearer ${process.env.VITE_TRANZILA_TOKEN}`,
 };
+
+const apiKey = import.meta.env.VITE_TRANZILA_API_KEY;
+const token = import.meta.env.VITE_TRANZILA_TOKEN;
+
+if (apiKey) {
+  authHeaders["x-api-key"] = apiKey;
+}
+
+if (token) {
+  authHeaders["Authorization"] = `Bearer ${token}`;
+}
 
 type TranzilaTransaction = { 
   transaction_index: string; 
