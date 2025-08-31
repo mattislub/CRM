@@ -59,7 +59,11 @@ export class TranzilaIntegrationService {
         description: t.description,
       }));
     } catch (error) {
-      console.error('Error fetching transactions from Tranzila:', error);
+      if (axios.isAxiosError(error) && !error.response) {
+        console.error('Connection error to Tranzila while fetching transactions:', error.message);
+      } else {
+        console.error('Error fetching transactions from Tranzila:', error);
+      }
       throw new Error('שגיאה בקבלת עסקאות מטרנזילה');
     }
   }
@@ -85,7 +89,11 @@ export class TranzilaIntegrationService {
       // החזר סט של transaction_index שכבר הופקו להם קבלות
       return new Set((data.documents || []).map((d: TranzilaDocument) => d.transaction_index));
     } catch (error) {
-      console.error('Error fetching existing receipts from Tranzila:', error);
+      if (axios.isAxiosError(error) && !error.response) {
+        console.error('Connection error to Tranzila while fetching existing receipts:', error.message);
+      } else {
+        console.error('Error fetching existing receipts from Tranzila:', error);
+      }
       throw new Error('שגיאה בקבלת קבלות קיימות מטרנזילה');
     }
   }
@@ -116,7 +124,11 @@ export class TranzilaIntegrationService {
 
       return res.data;
     } catch (error) {
-      console.error('Error creating receipt in Tranzila:', error);
+      if (axios.isAxiosError(error) && !error.response) {
+        console.error('Connection error to Tranzila while creating receipt:', error.message);
+      } else {
+        console.error('Error creating receipt in Tranzila:', error);
+      }
       throw new Error('שגיאה ביצירת קבלה בטרנזילה');
     }
   }

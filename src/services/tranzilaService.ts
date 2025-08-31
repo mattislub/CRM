@@ -33,7 +33,11 @@ export class TranzilaService {
       const textResponse = await response.text();
       return this.parseResponse(textResponse);
     } catch (error) {
-      console.error('Tranzila API Error:', error);
+      if (error instanceof TypeError) {
+        console.error('Connection error to Tranzila payment API:', error.message);
+      } else {
+        console.error('Tranzila API Error:', error);
+      }
       throw new Error('שגיאה בעיבוד התרומה');
     }
   }
@@ -84,7 +88,11 @@ export class TranzilaService {
 
       return response.data;
     } catch (error) {
-      console.error('Error getting transaction details:', error);
+      if (axios.isAxiosError(error) && !error.response) {
+        console.error('Connection error to Tranzila while getting transaction details:', error.message);
+      } else {
+        console.error('Error getting transaction details:', error);
+      }
       throw new Error('שגיאה בקבלת פרטי עסקה');
     }
   }
