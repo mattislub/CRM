@@ -1,9 +1,10 @@
+import axios from 'axios';
+import { generateTranzilaHeaders } from './tranzilaAuth';
 import { TranzilaRequest } from '../types';
 
 // URLs for different Tranzila APIs
 const TRANZILA_PAYMENT_URL = 'https://secure5.tranzila.com/cgi-bin/tranzila71u.cgi';
 const TRANZILA_API_URL = 'https://api.tranzila.com/v1';
-const TRANZILA_BILLING_URL = 'https://billing5.tranzila.com/api';
 
 export class TranzilaService {
   private supplier: string;
@@ -12,7 +13,7 @@ export class TranzilaService {
     this.supplier = supplier;
   }
 
-  async processPayment(request: TranzilaRequest): Promise<any> {
+  async processPayment(request: TranzilaRequest): Promise<Record<string, unknown>> {
     try {
       // בסביבת הפיתוח, נחזיר תשובה מדומה
       if (process.env.NODE_ENV === 'development') {
@@ -56,7 +57,7 @@ export class TranzilaService {
     return Object.fromEntries(params.entries());
   }
 
-  validatePaymentData(data: any): boolean {
+  validatePaymentData(data: Record<string, unknown>): boolean {
     const requiredFields = ['amount', 'ccno', 'expdate', 'cvv', 'contact', 'email'];
     return requiredFields.every(field => data[field] && data[field].toString().trim() !== '');
   }
@@ -64,7 +65,7 @@ export class TranzilaService {
   /**
    * קבלת מידע על עסקה ספציפית
    */
-  async getTransactionDetails(transactionId: string): Promise<any> {
+  async getTransactionDetails(transactionId: string): Promise<Record<string, unknown>> {
     try {
       if (process.env.NODE_ENV === 'development') {
         return {
@@ -76,19 +77,12 @@ export class TranzilaService {
         };
       }
 
-      const response = await fetch(`${TRANZILA_API_URL}/transactions/${transactionId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          // TODO: Add authentication headers
-        },
-      });
+      const response = await axios.get(
+        `${TRANZILA_API_URL}/transactions/${transactionId}`,
+        { headers: generateTranzilaHeaders() }
+      );
 
-      if (!response.ok) {
-        throw new Error(`Failed to get transaction details: ${response.status}`);
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
       console.error('Error getting transaction details:', error);
       throw new Error('שגיאה בקבלת פרטי עסקה');
