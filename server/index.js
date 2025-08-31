@@ -21,7 +21,7 @@ function loadEnv(path = '.env') {
 
 loadEnv();
 
-const required = ['VITE_TRANZILA_SUPPLIER_ID', 'VITE_TRANZILA_API_KEY', 'VITE_TRANZILA_TOKEN', 'PORT'];
+const required = ['VITE_TRANZILA_SUPPLIER_ID', 'VITE_TRANZILA_PUBLIC_KEY', 'VITE_TRANZILA_PRIVATE_KEY', 'PORT'];
 for (const key of required) {
   if (!process.env[key]) {
     console.error(`Missing required environment variable ${key}`);

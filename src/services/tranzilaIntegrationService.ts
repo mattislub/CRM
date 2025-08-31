@@ -1,19 +1,6 @@
+import axios from 'axios';
+import { generateTranzilaHeaders } from './tranzilaAuth';
 import { Charge } from '../types';
-
-const authHeaders: Record<string, string> = {
-  "Content-Type": "application/json",
-};
-
-const apiKey = import.meta.env.VITE_TRANZILA_API_KEY;
-const token = import.meta.env.VITE_TRANZILA_TOKEN;
-
-if (apiKey) {
-  authHeaders["x-api-key"] = apiKey;
-}
-
-if (token) {
-  authHeaders["Authorization"] = `Bearer ${token}`;
-}
 
 type TranzilaTransaction = { 
   transaction_index: string; 
@@ -54,22 +41,15 @@ export class TranzilaIntegrationService {
         return this.getMockTransactions(from, to);
       }
 
-      const res = await fetch("https://api.tranzila.com/v1/reports/transactions", {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ 
-          from_date: from, 
-          to_date: to 
-        }),
-      });
+      const res = await axios.post(
+        'https://api.tranzila.com/v1/reports/transactions',
+        { from_date: from, to_date: to },
+        { headers: generateTranzilaHeaders() }
+      );
 
-      if (!res.ok) {
-        throw new Error(`Reports API failed: ${res.status} ${res.statusText}`);
-      }
+      const data = res.data;
 
-      const data = await res.json();
-      
-      return (data.transactions || []).map((t: any) => ({
+      return (data.transactions || []).map((t: TranzilaTransaction) => ({
         transaction_index: t.transaction_index,
         sum: t.sum,
         currency: t.currency,
@@ -94,21 +74,13 @@ export class TranzilaIntegrationService {
         return this.getMockExistingReceipts();
       }
 
-      const res = await fetch("https://billing5.tranzila.com/api/documents_db/get_documents", {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          document_type: "RE", // קבלה
-          from_date: from,
-          to_date: to,
-        }),
-      });
+      const res = await axios.post(
+        'https://billing5.tranzila.com/api/documents_db/get_documents',
+        { document_type: 'RE', from_date: from, to_date: to },
+        { headers: generateTranzilaHeaders() }
+      );
 
-      if (!res.ok) {
-        throw new Error(`get_documents API failed: ${res.status} ${res.statusText}`);
-      }
-
-      const data = await res.json();
+      const data = res.data;
       
       // החזר סט של transaction_index שכבר הופקו להם קבלות
       return new Set((data.documents || []).map((d: TranzilaDocument) => d.transaction_index));
@@ -121,33 +93,28 @@ export class TranzilaIntegrationService {
   /**
    * יצירת קבלה חדשה ב-Tranzila
    */
-  async createReceiptFor(tx: TranzilaTransaction): Promise<any> {
+  async createReceiptFor(tx: TranzilaTransaction): Promise<Record<string, unknown>> {
     try {
       // בסביבת פיתוח - החזר תשובה מדומה
       if (process.env.NODE_ENV === 'development') {
         return this.getMockReceiptCreation(tx);
       }
 
-      const res = await fetch("https://billing5.tranzila.com/api/documents_db/create_document", {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          document_type: "RE",           // קבלה
+      const res = await axios.post(
+        'https://billing5.tranzila.com/api/documents_db/create_document',
+        {
+          document_type: 'RE',
           transaction_index: tx.transaction_index,
           currency: tx.currency,
           sum: tx.sum,
           contact: tx.contact,
           email: tx.email,
-          description: tx.description || 'תרומה',
-          // ניתן להוסיף פרטים נוספים לפי הצורך
-        }),
-      });
+          description: tx.description || 'תרומה'
+        },
+        { headers: generateTranzilaHeaders() }
+      );
 
-      if (!res.ok) {
-        throw new Error(`create_document API failed: ${res.status} ${res.statusText}`);
-      }
-
-      return await res.json();
+      return res.data;
     } catch (error) {
       console.error('Error creating receipt in Tranzila:', error);
       throw new Error('שגיאה ביצירת קבלה בטרנזילה');
@@ -240,7 +207,7 @@ export class TranzilaIntegrationService {
   }
 
   // נתונים מדומים לפיתוח
-  private getMockTransactions(from: string, to: string): TranzilaTransaction[] {
+  private getMockTransactions(): TranzilaTransaction[] {
     return [
       {
         transaction_index: 'TZ123456789',
