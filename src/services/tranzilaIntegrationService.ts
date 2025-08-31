@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { generateTranzilaHeaders } from './tranzilaAuth';
 import { Charge } from '../types';
+import { logError } from '../utils/logger';
 
 type TranzilaTransaction = { 
   transaction_index: string; 
@@ -60,9 +61,9 @@ export class TranzilaIntegrationService {
       }));
     } catch (error) {
       if (axios.isAxiosError(error) && !error.response) {
-        console.error('Connection error to Tranzila while fetching transactions:', error.message);
+        await logError('Connection error to Tranzila while fetching transactions', error);
       } else {
-        console.error('Error fetching transactions from Tranzila:', error);
+        await logError('Error fetching transactions from Tranzila', error);
       }
       throw new Error('שגיאה בקבלת עסקאות מטרנזילה');
     }
@@ -90,9 +91,9 @@ export class TranzilaIntegrationService {
       return new Set((data.documents || []).map((d: TranzilaDocument) => d.transaction_index));
     } catch (error) {
       if (axios.isAxiosError(error) && !error.response) {
-        console.error('Connection error to Tranzila while fetching existing receipts:', error.message);
+        await logError('Connection error to Tranzila while fetching existing receipts', error);
       } else {
-        console.error('Error fetching existing receipts from Tranzila:', error);
+        await logError('Error fetching existing receipts from Tranzila', error);
       }
       throw new Error('שגיאה בקבלת קבלות קיימות מטרנזילה');
     }
@@ -125,9 +126,9 @@ export class TranzilaIntegrationService {
       return res.data;
     } catch (error) {
       if (axios.isAxiosError(error) && !error.response) {
-        console.error('Connection error to Tranzila while creating receipt:', error.message);
+        await logError('Connection error to Tranzila while creating receipt', error);
       } else {
-        console.error('Error creating receipt in Tranzila:', error);
+        await logError('Error creating receipt in Tranzila', error);
       }
       throw new Error('שגיאה ביצירת קבלה בטרנזילה');
     }
@@ -178,7 +179,7 @@ export class TranzilaIntegrationService {
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
           const errorMsg = `שגיאה ביצירת קבלה לעסקה ${tx.transaction_index}: ${error}`;
-          console.error(errorMsg);
+          await logError(errorMsg);
           results.errors.push(errorMsg);
         }
       }
@@ -187,7 +188,7 @@ export class TranzilaIntegrationService {
       
       return results;
     } catch (error) {
-      console.error('Error in generateMissingReceipts:', error);
+      await logError('Error in generateMissingReceipts', error);
       results.errors.push(`שגיאה כללית: ${error}`);
       return results;
     }
@@ -213,7 +214,7 @@ export class TranzilaIntegrationService {
         updatedAt: new Date(tx.date),
       }));
     } catch (error) {
-      console.error('Error syncing transactions:', error);
+      await logError('Error syncing transactions', error);
       throw new Error('שגיאה בסנכרון עסקאות');
     }
   }
