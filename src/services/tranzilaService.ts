@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { generateTranzilaHeaders } from './tranzilaAuth';
 import { TranzilaRequest } from '../types';
+import { getErrorMessage } from '../utils/error';
 
 // URLs for different Tranzila APIs
 const TRANZILA_PAYMENT_URL = 'https://secure5.tranzila.com/cgi-bin/tranzila71u.cgi';
@@ -33,7 +34,8 @@ export class TranzilaService {
       const textResponse = await response.text();
       return this.parseResponse(textResponse);
     } catch (error) {
-      console.error('Tranzila API Error:', error);
+      const message = getErrorMessage(error);
+      console.error('Tranzila API Error:', message);
       throw new Error('שגיאה בעיבוד התרומה');
     }
   }
@@ -84,7 +86,8 @@ export class TranzilaService {
 
       return response.data;
     } catch (error) {
-      console.error('Error getting transaction details:', error);
+      const message = getErrorMessage(error);
+      console.error('Error getting transaction details:', message);
       throw new Error('שגיאה בקבלת פרטי עסקה');
     }
   }
