@@ -22,7 +22,8 @@ export default function ChargeModal({ customer, funds, onClose, onSubmit }: Char
     cvv: '',
   });
 
-  const tranzilaService = new TranzilaService('your-supplier-id'); // יש להחליף ב-ID האמיתי
+  const supplierId = import.meta.env.VITE_TRANZILA_SUPPLIER_ID || '';
+  const tranzilaService = new TranzilaService(supplierId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +38,7 @@ export default function ChargeModal({ customer, funds, onClose, onSubmit }: Char
         cvv: formData.cvv,
         contact: customer.name,
         email: customer.email,
-        supplier: 'your-supplier-id', // יש להחליף ב-ID האמיתי
+        supplier: supplierId,
         tranmode: 'A' as const,
       };
 
