@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import { readFileSync } from 'fs';
+import { readFileSync, appendFile } from 'fs';
 import { resolve } from 'path';
 
 function loadEnv(path = '.env') {
@@ -31,10 +31,26 @@ for (const key of required) {
 
 const port = parseInt(process.env.PORT, 10);
 
+const logFile = resolve(process.cwd(), 'server', 'logs.txt');
+
 const server = createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok' }));
+  } else if (req.url === '/logs' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      appendFile(logFile, body + '\n', err => {
+        if (err) {
+          console.error('Failed to write log', err);
+        }
+      });
+      res.writeHead(204);
+      res.end();
+    });
   } else {
     res.writeHead(404);
     res.end();
