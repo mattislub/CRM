@@ -1,6 +1,7 @@
 import { createServer } from 'http';
 import { readFileSync, appendFile } from 'fs';
 import { resolve } from 'path';
+import { Pool } from 'pg';
 
 function loadEnv(path = '.env') {
   try {
@@ -21,7 +22,16 @@ function loadEnv(path = '.env') {
 
 loadEnv();
 
-const required = ['VITE_TRANZILA_SUPPLIER_ID', 'VITE_TRANZILA_PUBLIC_KEY', 'VITE_TRANZILA_PRIVATE_KEY', 'PORT'];
+const required = [
+  'VITE_TRANZILA_SUPPLIER_ID',
+  'VITE_TRANZILA_PUBLIC_KEY',
+  'VITE_TRANZILA_PRIVATE_KEY',
+  'PORT',
+  'PGHOST',
+  'PGUSER',
+  'PGPASSWORD',
+  'PGDATABASE',
+];
 for (const key of required) {
   if (!process.env[key]) {
     console.error(`Missing required environment variable ${key}`);
@@ -32,6 +42,26 @@ for (const key of required) {
 const port = parseInt(process.env.PORT, 10);
 
 const logFile = resolve(process.cwd(), 'server', 'logs.txt');
+
+const pool = new Pool({
+  host: process.env.PGHOST,
+  port: process.env.PGPORT ? parseInt(process.env.PGPORT, 10) : undefined,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+  database: process.env.PGDATABASE,
+});
+
+pool
+  .query(
+    `CREATE TABLE IF NOT EXISTS logs (
+      id SERIAL PRIMARY KEY,
+      data TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`
+  )
+  .catch(err => {
+    console.error('Failed to ensure logs table exists', err);
+  });
 
 const server = createServer((req, res) => {
   if (req.url === '/health') {
@@ -48,6 +78,11 @@ const server = createServer((req, res) => {
           console.error('Failed to write log', err);
         }
       });
+      pool
+        .query('INSERT INTO logs(data) VALUES($1)', [body])
+        .catch(err => {
+          console.error('Failed to insert log', err);
+        });
       res.writeHead(204);
       res.end();
     });
