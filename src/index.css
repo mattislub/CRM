@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hebrew font for Hebrew dates */
+.font-hebrew {
+  font-family: 'David Libre', 'Frank Ruehl CLM', 'Times New Roman', serif;
+  direction: rtl;
+}
