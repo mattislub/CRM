@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, Clock, X } from 'lucide-react';
+import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X } from 'lucide-react';
 
 interface Donation {
   id: string;
@@ -93,56 +93,40 @@ export default function DonorsPage() {
     }
   };
 
-  const handleSendEmail = (donorId: string, donationId: string) => {
-    setDonors(prev => 
-      prev.map(donor => 
-        donor.id === donorId 
-          ? {
-              ...donor,
-              donations: donor.donations.map(donation =>
-                donation.id === donationId
-                  ? { ...donation, emailSent: true, sentDate: new Date() }
-                  : donation
-              )
-            }
-          : donor
-      )
-    );
-  };
-
-  const handleSendAllPendingEmails = (donorId: string) => {
-    setDonors(prev => 
-      prev.map(donor => 
-        donor.id === donorId 
-          ? {
-              ...donor,
-              donations: donor.donations.map(donation =>
-                !donation.emailSent
-                  ? { ...donation, emailSent: true, sentDate: new Date() }
-                  : donation
-              )
-            }
-          : donor
-      )
-    );
-  };
-
-  const handleSendAllPendingEmailsGlobal = () => {
-    setDonors(prev => 
-      prev.map(donor => ({
-        ...donor,
-        donations: donor.donations.map(donation =>
-          !donation.emailSent
-            ? { ...donation, emailSent: true, sentDate: new Date() }
-            : donation
+  const handleSendEmail = async (donorId: string, donationId: string) => {
+    const donor = donors.find(d => d.id === donorId);
+    const donation = donor?.donations.find(d => d.id === donationId);
+    if (!donor || !donation) return;
+    try {
+      await fetch('/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: donor.email,
+          subject: 'אישור תרומה',
+          text: `תודה על תרומתך בסך ${formatCurrency(donation.amount)}`
+        })
+      });
+      setDonors(prev =>
+        prev.map(d =>
+          d.id === donorId
+            ? {
+                ...d,
+                donations: d.donations.map(dd =>
+                  dd.id === donationId
+                    ? { ...dd, emailSent: true, sentDate: new Date() }
+                    : dd
+                )
+              }
+            : d
         )
-      }))
-    );
+      );
+    } catch (err) {
+      console.error('Failed to send email', err);
+    }
   };
 
-  const totalPendingEmails = donors.reduce((sum, donor) => 
-    sum + donor.donations.filter(d => !d.emailSent).length, 0
-  );
+  // Future enhancements: add bulk email operations if required.
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('he-IL', {
