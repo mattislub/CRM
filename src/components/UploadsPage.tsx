@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Upload, FileSpreadsheet, FileText, X, CheckCircle, AlertCircle, Download } from 'lucide-react';
-import axios from 'axios';
+
+// Use an environment variable so the upload works even when the app is served statically
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface UploadedFile {
   id: string;
@@ -18,14 +20,6 @@ export default function UploadsPage() {
   const [dragActive, setDragActive] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
-
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-    });
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -73,13 +67,17 @@ export default function UploadsPage() {
         reader.onload = () => {
           const result = reader.result as string;
           const base64 = result.split(',')[1];
-          axios
-            .post('/upload', { fileName: file.name, content: base64 })
-            .then(res => {
+          fetch(`${API_URL}/upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: file.name, content: base64 })
+          })
+            .then(res => res.json())
+            .then(data => {
               setUploadedFiles(prev =>
                 prev.map(f =>
                   f.id === newFile.id
-                    ? { ...f, status: 'success', url: res.data.url }
+                    ? { ...f, status: 'success', url: data.url }
                     : f
                 )
               );
