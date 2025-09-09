@@ -1,26 +1,8 @@
+import 'dotenv/config';
 import { createServer } from 'http';
-import { readFileSync, appendFile } from 'fs';
+import { appendFile } from 'fs';
 import { resolve } from 'path';
 import { Pool } from 'pg';
-
-function loadEnv(path = '.env') {
-  try {
-    const envFile = readFileSync(resolve(process.cwd(), path), 'utf-8');
-    for (const line of envFile.split('\n')) {
-      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-      if (match) {
-        const key = match[1];
-        let value = match[2] || '';
-        value = value.replace(/(^['"]|['"]$)/g, '');
-        process.env[key] = value;
-      }
-    }
-  } catch {
-    // ignore missing env file
-  }
-}
-
-loadEnv();
 
 const required = [
   'VITE_TRANZILA_SUPPLIER_ID',
