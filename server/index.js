@@ -4,6 +4,7 @@ import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir
 import { resolve } from 'path';
 import { Pool } from 'pg';
 import { PDFDocument } from 'pdf-lib';
+import * as XLSX from "xlsx";
 
 const required = [
   'PGHOST',
@@ -358,6 +359,40 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ success: true }));
       } catch (err) {
         console.error('Failed to split PDF', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+  } else if (req.url === '/assign-pdfs' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', async () => {
+      try {
+        const { pdfName, excel } = JSON.parse(body);
+        const workbook = XLSX.read(Buffer.from(excel, 'base64'), { type: 'buffer' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const pagesRes = await pool.query('SELECT file_url FROM pdf_pages WHERE original_name = $1 ORDER BY page_number', [pdfName]);
+        const pages = pagesRes.rows;
+        for (let i = 1; i < rows.length && i - 1 < pages.length; i++) {
+          const row = rows[i];
+          const donorNumber = row[0];
+          const amount = parseFloat(row[4]) || 0;
+          const date = row[12] ? new Date(row[12]) : new Date();
+          const description = row[2] || '';
+          const receipt = row[5] ? ` - קבלה ${row[5]}` : '';
+          if (!donorNumber) continue;
+          const donorRes = await pool.query('SELECT id FROM donors WHERE donor_number = $1', [donorNumber]);
+          if (donorRes.rowCount === 0) continue;
+          const donorId = donorRes.rows[0].id;
+          await pool.query('INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url) VALUES($1,$2,$3,$4,$5)', [donorId, amount, date.toISOString().slice(0,10), description + receipt, pages[i-1].file_url]);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        console.error('Failed to assign PDFs', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false }));
       }

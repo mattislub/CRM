@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Scissors } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Scissors, FileSpreadsheet } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -16,6 +16,8 @@ interface SplitPdf {
 export default function PdfListPage() {
   const [pdfs, setPdfs] = useState<SavedPdf[]>([]);
   const [splitPdfs, setSplitPdfs] = useState<SplitPdf[]>([]);
+  const [assignPdf, setAssignPdf] = useState<string | null>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPdfs = () => {
     fetch(`${API_URL}/pdfs`)
@@ -45,8 +47,39 @@ export default function PdfListPage() {
     fetchSplitPdfs();
   };
 
+  const assignFromExcel = (pdf: SavedPdf) => {
+    setAssignPdf(pdf.name);
+    excelInputRef.current?.click();
+  };
+
+  const onExcelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !assignPdf) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      await fetch(`${API_URL}/assign-pdfs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfName: assignPdf, excel: base64 }),
+      });
+      e.target.value = '';
+      setAssignPdf(null);
+      fetchSplitPdfs();
+    };
+    reader.readAsDataURL(file);
+  };
+
+
   return (
     <div className="space-y-8">
+      <input
+        ref={excelInputRef}
+        type="file"
+        accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+        onChange={onExcelChange}
+        className="hidden"
+      />
       <div>
         <h1 className="text-3xl font-bold text-gray-900">קבצי PDF</h1>
         <p className="text-gray-600 mt-2">ניהול קבצי PDF שהועלו</p>
@@ -65,13 +98,22 @@ export default function PdfListPage() {
               <tr key={pdf.url}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pdf.name}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <button
-                    onClick={() => splitPdf(pdf)}
-                    className="inline-flex items-center space-x-1 space-x-reverse text-blue-600 hover:text-blue-900"
-                  >
-                    <Scissors className="h-4 w-4" />
-                    <span>פצל עמודים</span>
-                  </button>
+                  <div className="flex items-center space-x-4 space-x-reverse">
+                    <button
+                      onClick={() => splitPdf(pdf)}
+                      className="inline-flex items-center space-x-1 space-x-reverse text-blue-600 hover:text-blue-900"
+                    >
+                      <Scissors className="h-4 w-4" />
+                      <span>פצל עמודים</span>
+                    </button>
+                    <button
+                      onClick={() => assignFromExcel(pdf)}
+                      className="inline-flex items-center space-x-1 space-x-reverse text-green-600 hover:text-green-900"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      <span>שיוך תורמים</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
