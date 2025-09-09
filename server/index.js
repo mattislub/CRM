@@ -17,7 +17,7 @@ for (const key of required) {
   }
 }
 
-const port = parseInt(process.env.PORT || '8080', 10);
+const port = parseInt(process.env.PORT || '3001', 10);
 
 const logFile = resolve(process.cwd(), 'server', 'logs.txt');
 const emailLogFile = resolve(process.cwd(), 'server', 'emails.txt');
