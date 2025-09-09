@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Scissors } from 'lucide-react';
-import { PDFDocument } from 'pdf-lib';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -20,22 +19,11 @@ export default function PdfListPage() {
   }, []);
 
   const splitPdf = async (pdf: SavedPdf) => {
-    const response = await fetch(`${API_URL}${pdf.url}`);
-    const arrayBuffer = await response.arrayBuffer();
-    const doc = await PDFDocument.load(arrayBuffer);
-    const totalPages = doc.getPageCount();
-    for (let i = 0; i < totalPages; i++) {
-      const newDoc = await PDFDocument.create();
-      const [page] = await newDoc.copyPages(doc, [i]);
-      newDoc.addPage(page);
-      const newBytes = await newDoc.save();
-      const blob = new Blob([newBytes], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `${pdf.name.replace(/\.pdf$/i, '')}-page-${i + 1}.pdf`;
-      link.click();
-      URL.revokeObjectURL(link.href);
-    }
+    await fetch(`${API_URL}/split-pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: pdf.name }),
+    });
   };
 
   return (

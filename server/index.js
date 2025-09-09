@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import { createServer } from 'http';
-import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir } from 'fs';
+import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { Pool } from 'pg';
+import { PDFDocument } from 'pdf-lib';
 
 const required = [
   'PGHOST',
@@ -24,6 +25,10 @@ const emailLogFile = resolve(process.cwd(), 'server', 'emails.txt');
 const uploadDir = resolve(process.cwd(), 'server', 'uploads');
 if (!existsSync(uploadDir)) {
   mkdirSync(uploadDir, { recursive: true });
+}
+const splitDir = resolve(process.cwd(), 'server', 'split');
+if (!existsSync(splitDir)) {
+  mkdirSync(splitDir, { recursive: true });
 }
 
 async function sendEmail({ to, subject, text, html }) {
@@ -101,6 +106,19 @@ pool
   )
   .catch(err => {
     console.error('Failed to ensure donations table exists', err);
+  });
+
+pool
+  .query(
+    `CREATE TABLE IF NOT EXISTS pdf_pages (
+      id SERIAL PRIMARY KEY,
+      original_name TEXT NOT NULL,
+      page_number INTEGER NOT NULL,
+      file_url TEXT NOT NULL
+    )`
+  )
+  .catch(err => {
+    console.error('Failed to ensure pdf_pages table exists', err);
   });
 
 const server = createServer((req, res) => {
@@ -295,6 +313,39 @@ const server = createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(pdfs));
     });
+  } else if (req.url === '/split-pdf' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', async () => {
+      try {
+        const { name } = JSON.parse(body);
+        const sourcePath = resolve(uploadDir, name);
+        const fileBytes = readFileSync(sourcePath);
+        const doc = await PDFDocument.load(fileBytes);
+        const totalPages = doc.getPageCount();
+        for (let i = 0; i < totalPages; i++) {
+          const newDoc = await PDFDocument.create();
+          const [page] = await newDoc.copyPages(doc, [i]);
+          newDoc.addPage(page);
+          const pageBytes = await newDoc.save();
+          const pageName = `${name.replace(/\.pdf$/i, '')}-page-${i + 1}.pdf`;
+          const pagePath = resolve(splitDir, pageName);
+          writeFileSync(pagePath, pageBytes);
+          await pool.query(
+            'INSERT INTO pdf_pages(original_name, page_number, file_url) VALUES($1, $2, $3)',
+            [name, i + 1, `/split/${pageName}`]
+          );
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        console.error('Failed to split PDF', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
   } else if (req.url === '/upload' && req.method === 'POST') {
     console.log('Received upload request:', req.url);
     let body = '';
@@ -323,6 +374,14 @@ const server = createServer((req, res) => {
     });
   } else if (req.url?.startsWith('/uploads/') && req.method === 'GET') {
     const filePath = resolve(uploadDir, '.' + req.url.replace('/uploads', ''));
+    const stream = createReadStream(filePath);
+    stream.on('error', () => {
+      res.writeHead(404);
+      res.end();
+    });
+    stream.pipe(res);
+  } else if (req.url?.startsWith('/split/') && req.method === 'GET') {
+    const filePath = resolve(splitDir, '.' + req.url.replace('/split', ''));
     const stream = createReadStream(filePath);
     stream.on('error', () => {
       res.writeHead(404);
