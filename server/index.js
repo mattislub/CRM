@@ -104,6 +104,16 @@ pool
   });
 
 const server = createServer((req, res) => {
+  // Allow CORS so the front-end can access the API when served statically
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   console.log(`Incoming request: ${req.method} ${req.url}`);
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
