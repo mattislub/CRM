@@ -74,6 +74,36 @@ pool
     console.error('Failed to ensure logs table exists', err);
   });
 
+pool
+  .query(
+    `CREATE TABLE IF NOT EXISTS donors (
+      id SERIAL PRIMARY KEY,
+      donor_number TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL
+    )`
+  )
+  .catch(err => {
+    console.error('Failed to ensure donors table exists', err);
+  });
+
+pool
+  .query(
+    `CREATE TABLE IF NOT EXISTS donations (
+      id SERIAL PRIMARY KEY,
+      donor_id INTEGER REFERENCES donors(id) ON DELETE CASCADE,
+      amount NUMERIC NOT NULL,
+      donation_date DATE NOT NULL,
+      description TEXT,
+      pdf_url TEXT,
+      email_sent BOOLEAN DEFAULT FALSE,
+      sent_date TIMESTAMPTZ
+    )`
+  )
+  .catch(err => {
+    console.error('Failed to ensure donations table exists', err);
+  });
+
 const server = createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -106,10 +136,138 @@ const server = createServer((req, res) => {
       try {
         const data = JSON.parse(body);
         await sendEmail(data);
+        if (data.donationId) {
+          pool
+            .query('UPDATE donations SET email_sent = true, sent_date = NOW() WHERE id = $1', [data.donationId])
+            .catch(err => {
+              console.error('Failed to mark email sent', err);
+            });
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
       } catch {
         res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+  } else if (req.url === '/donors' && req.method === 'GET') {
+    pool
+      .query(
+        `SELECT d.id, d.donor_number, d.full_name, d.email,
+                COALESCE(json_agg(
+                  json_build_object(
+                    'id', dn.id,
+                    'amount', dn.amount,
+                    'date', dn.donation_date,
+                    'description', dn.description,
+                    'pdfUrl', dn.pdf_url,
+                    'emailSent', dn.email_sent,
+                    'sentDate', dn.sent_date
+                  )
+                ) FILTER (WHERE dn.id IS NOT NULL), '[]') AS donations,
+                COALESCE(SUM(dn.amount), 0) AS total_donations
+           FROM donors d
+           LEFT JOIN donations dn ON dn.donor_id = d.id
+          GROUP BY d.id
+          ORDER BY d.id`
+      )
+      .then(result => {
+        const donors = result.rows.map(row => ({
+          id: row.id,
+          donorNumber: row.donor_number,
+          fullName: row.full_name,
+          email: row.email,
+          donations: row.donations.map(d => ({
+            ...d,
+            amount: parseFloat(d.amount),
+          })),
+          totalDonations: parseFloat(row.total_donations),
+        }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(donors));
+      })
+      .catch(err => {
+        console.error('Failed to fetch donors', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      });
+  } else if (req.url === '/donors' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        pool
+          .query(
+            'INSERT INTO donors(donor_number, full_name, email) VALUES($1, $2, $3) RETURNING id',
+            [data.donorNumber, data.fullName, data.email]
+          )
+          .then(result => {
+            const donor = {
+              id: result.rows[0].id,
+              donorNumber: data.donorNumber,
+              fullName: data.fullName,
+              email: data.email,
+              donations: [],
+              totalDonations: 0,
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(donor));
+          })
+          .catch(err => {
+            console.error('Failed to add donor', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false }));
+          });
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+  } else if (req.url === '/donations' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        pool
+          .query(
+            `INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url, email_sent, sent_date)
+             VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [
+              data.donorId,
+              data.amount,
+              data.date,
+              data.description,
+              data.pdfUrl || null,
+              data.emailSent || false,
+              data.sentDate || null,
+            ]
+          )
+          .then(result => {
+            const donation = {
+              id: result.rows[0].id,
+              amount: data.amount,
+              date: data.date,
+              description: data.description,
+              pdfUrl: data.pdfUrl || null,
+              emailSent: data.emailSent || false,
+              sentDate: data.sentDate || null,
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(donation));
+          })
+          .catch(err => {
+            console.error('Failed to add donation', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false }));
+          });
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false }));
       }
     });

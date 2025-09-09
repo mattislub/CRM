@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X } from 'lucide-react';
 
 interface Donation {
@@ -21,52 +21,7 @@ interface Donor {
 }
 
 export default function DonorsPage() {
-  const [donors, setDonors] = useState<Donor[]>([
-    {
-      id: '1',
-      donorNumber: '001',
-      fullName: 'יוסי כהן',
-      email: 'yossi@example.com',
-      donations: [
-        {
-          id: 'd1',
-          amount: 500,
-          date: new Date('2024-01-15'),
-          description: 'תרומה חודשית',
-          pdfUrl: '/donations/d1.pdf',
-          emailSent: true,
-          sentDate: new Date('2024-01-15')
-        },
-        {
-          id: 'd2',
-          amount: 1000,
-          date: new Date('2024-02-15'),
-          description: 'תרומה מיוחדת',
-          pdfUrl: '/donations/d2.pdf',
-          emailSent: false
-        }
-      ],
-      totalDonations: 1500
-    },
-    {
-      id: '2',
-      donorNumber: '002',
-      fullName: 'שרה לוי',
-      email: 'sarah@example.com',
-      donations: [
-        {
-          id: 'd3',
-          amount: 300,
-          date: new Date('2024-01-20'),
-          description: 'תרומה רגילה',
-          pdfUrl: '/donations/d3.pdf',
-          emailSent: true,
-          sentDate: new Date('2024-01-20')
-        }
-      ],
-      totalDonations: 300
-    }
-  ]);
+  const [donors, setDonors] = useState<Donor[]>([]);
 
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
   const [showAddDonor, setShowAddDonor] = useState(false);
@@ -76,20 +31,48 @@ export default function DonorsPage() {
     email: ''
   });
 
-  const handleAddDonor = () => {
+  const [showAddDonation, setShowAddDonation] = useState<Donor | null>(null);
+  const [newDonation, setNewDonation] = useState({
+    amount: '',
+    date: '',
+    description: '',
+    file: null as File | null
+  });
+
+  useEffect(() => {
+    fetch('/donors')
+      .then(res => res.json())
+      .then(data => {
+        const loaded = data.map((d: any) => ({
+          ...d,
+          donations: d.donations.map((dn: any) => ({
+            ...dn,
+            date: new Date(dn.date),
+            sentDate: dn.sentDate ? new Date(dn.sentDate) : undefined,
+          }))
+        }));
+        setDonors(loaded);
+      })
+      .catch(err => {
+        console.error('Failed to load donors', err);
+      });
+  }, []);
+
+  const handleAddDonor = async () => {
     if (newDonor.donorNumber && newDonor.fullName && newDonor.email) {
-      const donor: Donor = {
-        id: Math.random().toString(36).substr(2, 9),
-        donorNumber: newDonor.donorNumber,
-        fullName: newDonor.fullName,
-        email: newDonor.email,
-        donations: [],
-        totalDonations: 0
-      };
-      
-      setDonors(prev => [...prev, donor]);
-      setNewDonor({ donorNumber: '', fullName: '', email: '' });
-      setShowAddDonor(false);
+      try {
+        const res = await fetch('/donors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newDonor)
+        });
+        const donor = await res.json();
+        setDonors(prev => [...prev, { ...donor, donations: donor.donations || [] }]);
+        setNewDonor({ donorNumber: '', fullName: '', email: '' });
+        setShowAddDonor(false);
+      } catch (err) {
+        console.error('Failed to add donor', err);
+      }
     }
   };
 
@@ -104,7 +87,8 @@ export default function DonorsPage() {
         body: JSON.stringify({
           to: donor.email,
           subject: 'אישור תרומה',
-          text: `תודה על תרומתך בסך ${formatCurrency(donation.amount)}`
+          text: `תודה על תרומתך בסך ${formatCurrency(donation.amount)}`,
+          donationId
         })
       });
       setDonors(prev =>
@@ -133,6 +117,69 @@ export default function DonorsPage() {
           await handleSendEmail(donor.id, donation.id);
         }
       }
+    }
+  };
+
+  const fileToBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleAddDonation = async () => {
+    if (!showAddDonation) return;
+    if (!newDonation.amount || !newDonation.date || !newDonation.description) return;
+    try {
+      let pdfUrl: string | undefined;
+      if (newDonation.file) {
+        const content = await fileToBase64(newDonation.file);
+        const uploadRes = await fetch('/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: newDonation.file.name, content })
+        });
+        const uploadData = await uploadRes.json();
+        pdfUrl = uploadData.url;
+      }
+      const res = await fetch('/donations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          donorId: showAddDonation.id,
+          amount: parseFloat(newDonation.amount),
+          date: newDonation.date,
+          description: newDonation.description,
+          pdfUrl
+        })
+      });
+      const data = await res.json();
+      setDonors(prev =>
+        prev.map(d =>
+          d.id === showAddDonation.id
+            ? {
+                ...d,
+                donations: [
+                  ...d.donations,
+                  {
+                    ...data,
+                    date: new Date(data.date),
+                    sentDate: data.sentDate ? new Date(data.sentDate) : undefined
+                  }
+                ],
+                totalDonations: d.totalDonations + data.amount
+              }
+            : d
+        )
+      );
+      setShowAddDonation(null);
+      setNewDonation({ amount: '', date: '', description: '', file: null });
+    } catch (err) {
+      console.error('Failed to add donation', err);
     }
   };
 
@@ -247,6 +294,95 @@ export default function DonorsPage() {
         </div>
       )}
 
+      {/* Add Donation Modal */}
+      {showAddDonation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">הוסף תרומה חדשה</h3>
+              <button
+                onClick={() => setShowAddDonation(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  סכום
+                </label>
+                <input
+                  type="number"
+                  value={newDonation.amount}
+                  onChange={(e) => setNewDonation(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס סכום"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תאריך
+                </label>
+                <input
+                  type="date"
+                  value={newDonation.date}
+                  onChange={(e) => setNewDonation(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תיאור
+                </label>
+                <input
+                  type="text"
+                  value={newDonation.description}
+                  onChange={(e) => setNewDonation(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס תיאור"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  קובץ PDF
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) =>
+                    setNewDonation(prev => ({
+                      ...prev,
+                      file: e.target.files ? e.target.files[0] : null,
+                    }))
+                  }
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 space-x-reverse mt-6">
+              <button
+                onClick={() => setShowAddDonation(null)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={handleAddDonation}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              >
+                הוסף תרומה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
@@ -334,7 +470,15 @@ export default function DonorsPage() {
               
               {selectedDonor?.id === donor.id && (
                 <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                  <h5 className="font-medium text-gray-900 mb-3">תרומות של {donor.fullName}</h5>
+                  <div className="flex items-center justify-between mb-3">
+                    <h5 className="font-medium text-gray-900">תרומות של {donor.fullName}</h5>
+                    <button
+                      onClick={() => setShowAddDonation(donor)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+                    >
+                      הוסף תרומה
+                    </button>
+                  </div>
                   <div className="space-y-3">
                     {donor.donations.map((donation) => (
                       <div key={donation.id} className="bg-white rounded-lg p-4 flex items-center justify-between">
