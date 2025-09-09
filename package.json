@@ -16,6 +16,7 @@
     "dotenv": "^16.4.5",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.1",
+    "pdf-lib": "^1.17.1",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

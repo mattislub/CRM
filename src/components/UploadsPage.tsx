@@ -19,6 +19,14 @@ export default function UploadsPage() {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+    });
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -60,6 +68,7 @@ export default function UploadsPage() {
 
         setUploadedFiles(prev => [...prev, newFile]);
 
+
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
@@ -95,7 +104,7 @@ export default function UploadsPage() {
           );
         };
         reader.readAsDataURL(file);
-      }
+        }
     });
   };
 
