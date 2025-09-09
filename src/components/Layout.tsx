@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Upload, Home, Users, FileText } from 'lucide-react';
 
@@ -8,6 +8,17 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
+
+  useEffect(() => {
+    fetch('/health')
+      .then(res => res.json())
+      .then(data => {
+        console.log('Server health check:', data);
+      })
+      .catch(err => {
+        console.error('Server health check failed', err);
+      });
+  }, []);
 
   const isActive = (path: string) => location.pathname === path;
 
