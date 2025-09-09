@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X } from 'lucide-react';
 
+// Use an environment variable so API calls work when the app is served statically
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 interface Donation {
   id: string;
   amount: number;
@@ -40,7 +43,7 @@ export default function DonorsPage() {
   });
 
   useEffect(() => {
-    fetch('/donors')
+    fetch(`${API_URL}/donors`)
       .then(res => res.json())
       .then(data => {
         const loaded = data.map((d: any) => ({
@@ -61,7 +64,7 @@ export default function DonorsPage() {
   const handleAddDonor = async () => {
     if (newDonor.donorNumber && newDonor.fullName && newDonor.email) {
       try {
-        const res = await fetch('/donors', {
+        const res = await fetch(`${API_URL}/donors`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newDonor)
@@ -81,7 +84,7 @@ export default function DonorsPage() {
     const donation = donor?.donations.find(d => d.id === donationId);
     if (!donor || !donation) return;
     try {
-      await fetch('/email', {
+      await fetch(`${API_URL}/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,7 +141,7 @@ export default function DonorsPage() {
       let pdfUrl: string | undefined;
       if (newDonation.file) {
         const content = await fileToBase64(newDonation.file);
-        const uploadRes = await fetch('/upload', {
+        const uploadRes = await fetch(`${API_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileName: newDonation.file.name, content })
@@ -146,7 +149,7 @@ export default function DonorsPage() {
         const uploadData = await uploadRes.json();
         pdfUrl = uploadData.url;
       }
-      const res = await fetch('/donations', {
+      const res = await fetch(`${API_URL}/donations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
