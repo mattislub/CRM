@@ -83,6 +83,11 @@ export default function UploadsPage() {
                     : f
                 )
               );
+              if (fileType === 'pdf') {
+                const stored = JSON.parse(localStorage.getItem('pdfs') || '[]');
+                stored.push({ id: newFile.id, name: file.name, data: result });
+                localStorage.setItem('pdfs', JSON.stringify(stored));
+              }
             })
             .catch(() => {
               setUploadedFiles(prev =>
@@ -127,7 +132,15 @@ export default function UploadsPage() {
   };
 
   const removeFile = (id: string) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== id));
+    setUploadedFiles(prev => {
+      const file = prev.find(f => f.id === id);
+      if (file?.type === 'pdf') {
+        const stored = JSON.parse(localStorage.getItem('pdfs') || '[]');
+        const updated = stored.filter((p: { id: string }) => p.id !== id);
+        localStorage.setItem('pdfs', JSON.stringify(updated));
+      }
+      return prev.filter(f => f.id !== id);
+    });
   };
 
   const getStatusIcon = (status: string) => {
