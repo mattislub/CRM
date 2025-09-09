@@ -141,6 +141,7 @@ export default function DonorsPage() {
       let pdfUrl: string | undefined;
       if (newDonation.file) {
         const content = await fileToBase64(newDonation.file);
+        console.log('Uploading to', `${API_URL}/upload`);
         const uploadRes = await fetch(`${API_URL}/upload`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -282,6 +282,7 @@ const server = createServer((req, res) => {
       }
     });
   } else if (req.url === '/upload' && req.method === 'POST') {
+    console.log('Received upload request:', req.url);
     let body = '';
     req.on('data', chunk => {
       body += chunk;

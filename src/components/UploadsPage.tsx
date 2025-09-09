@@ -67,6 +67,7 @@ export default function UploadsPage() {
         reader.onload = () => {
           const result = reader.result as string;
           const base64 = result.split(',')[1];
+          console.log('Uploading to', `${API_URL}/upload`);
           fetch(`${API_URL}/upload`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
