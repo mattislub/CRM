@@ -126,7 +126,19 @@ export default function DonorsPage() {
     }
   };
 
-  // Future enhancements: add bulk email operations if required.
+  const handleSendAllPendingEmails = async () => {
+    for (const donor of donors) {
+      for (const donation of donor.donations) {
+        if (!donation.emailSent) {
+          await handleSendEmail(donor.id, donation.id);
+        }
+      }
+    }
+  };
+
+  const hasPendingEmails = donors.some(donor =>
+    donor.donations.some(donation => !donation.emailSent)
+  );
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('he-IL', {
@@ -142,14 +154,24 @@ export default function DonorsPage() {
           <h1 className="text-3xl font-bold text-gray-900">רשימת תורמים</h1>
           <p className="text-gray-600 mt-2">ניהול תורמים ותרומות</p>
         </div>
-        
-        <button
-          onClick={() => setShowAddDonor(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition-colors"
-        >
-          <Plus className="h-5 w-5" />
-          <span>הוסף תורם חדש</span>
-        </button>
+
+        <div className="flex items-center space-x-3 space-x-reverse">
+          <button
+            onClick={handleSendAllPendingEmails}
+            disabled={!hasPendingEmails}
+            className={`bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition-colors ${!hasPendingEmails ? 'opacity-50 cursor-not-allowed hover:bg-green-600' : ''}`}
+          >
+            <Send className="h-5 w-5" />
+            <span>שלח כל הקבלות שעדיין לא נשלחו</span>
+          </button>
+          <button
+            onClick={() => setShowAddDonor(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition-colors"
+          >
+            <Plus className="h-5 w-5" />
+            <span>הוסף תורם חדש</span>
+          </button>
+        </div>
       </div>
 
       {/* Add Donor Modal */}
