@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, FileSpreadsheet, FileText, X, CheckCircle, AlertCircle, Download } from 'lucide-react';
+import axios from 'axios';
 
 interface UploadedFile {
   id: string;
@@ -9,6 +10,7 @@ interface UploadedFile {
   uploadDate: Date;
   status: 'uploading' | 'success' | 'error';
   errorMessage?: string;
+  url?: string;
 }
 
 export default function UploadsPage() {
@@ -66,30 +68,43 @@ export default function UploadsPage() {
 
         setUploadedFiles(prev => [...prev, newFile]);
 
-        const savePdf = async () => {
-          const data = await fileToBase64(file);
-          const stored = localStorage.getItem('pdfs');
-          const pdfs = stored ? JSON.parse(stored) : [];
-          pdfs.push({ id: newFile.id, name: file.name, data });
-          localStorage.setItem('pdfs', JSON.stringify(pdfs));
-        };
 
-        // סימולציה של העלאה
-        setTimeout(() => {
-          const isSuccess = Math.random() > 0.1;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          axios
+            .post('/upload', { fileName: file.name, content: base64 })
+            .then(res => {
+              setUploadedFiles(prev =>
+                prev.map(f =>
+                  f.id === newFile.id
+                    ? { ...f, status: 'success', url: res.data.url }
+                    : f
+                )
+              );
+            })
+            .catch(() => {
+              setUploadedFiles(prev =>
+                prev.map(f =>
+                  f.id === newFile.id
+                    ? { ...f, status: 'error', errorMessage: 'שגיאה בהעלאת הקובץ' }
+                    : f
+                )
+              );
+            });
+        };
+        reader.onerror = () => {
           setUploadedFiles(prev =>
             prev.map(f =>
               f.id === newFile.id
-                ? { ...f, status: isSuccess ? 'success' : 'error', errorMessage: 'שגיאה בהעלאת הקובץ' }
+                ? { ...f, status: 'error', errorMessage: 'שגיאה בהעלאת הקובץ' }
                 : f
             )
           );
-
-          if (isSuccess && fileType === 'pdf') {
-            savePdf();
-          }
-        }, 2000);
-      }
+        };
+        reader.readAsDataURL(file);
+        }
     });
   };
 
@@ -253,14 +268,16 @@ export default function UploadsPage() {
                 
                 <div className="flex items-center space-x-3 space-x-reverse">
                   {getStatusIcon(file.status)}
-                  
-                  {file.status === 'success' && (
-                    <button
+
+                  {file.status === 'success' && file.url && (
+                    <a
+                      href={file.url}
+                      download
                       className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
                       title="הורד קובץ"
                     >
                       <Download className="h-4 w-4" />
-                    </button>
+                    </a>
                   )}
                   
                   <button
