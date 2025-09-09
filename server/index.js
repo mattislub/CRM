@@ -300,35 +300,43 @@ const server = createServer((req, res) => {
       }
     });
   } else if (req.url === '/pdfs' && req.method === 'GET') {
-    readdir(uploadDir, (err, files) => {
+    readdir(uploadDir, async (err, files) => {
       if (err) {
         console.error('Failed to read uploads directory', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false }));
         return;
       }
-      const pdfs = files
-        .filter(f => f.toLowerCase().endsWith('.pdf'))
-        .map(name => ({ name, url: `/uploads/${name}` }));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(pdfs));
-    });
-  } else if (req.url === '/split-pdfs' && req.method === 'GET') {
-    pool
-      .query('SELECT original_name, page_number, file_url FROM pdf_pages ORDER BY id')
-      .then(result => {
-        const pdfs = result.rows.map(row => ({
-          name: `${row.original_name} - page ${row.page_number}`,
-          url: row.file_url,
-        }));
+
+      try {
+        const { rows } = await pool.query(
+          'SELECT original_name, page_number, file_url FROM pdf_pages ORDER BY id'
+        );
+        const grouped = rows.reduce((acc, row) => {
+          if (!acc[row.original_name]) acc[row.original_name] = [];
+          acc[row.original_name].push({
+            name: `${row.original_name} - page ${row.page_number}`,
+            url: row.file_url,
+          });
+          return acc;
+        }, {});
+
+        const pdfs = files
+          .filter(f => f.toLowerCase().endsWith('.pdf'))
+          .map(name => ({
+            name,
+            url: `/uploads/${name}`,
+            splitPdfs: grouped[name] || [],
+          }));
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(pdfs));
-      })
-      .catch(err => {
-        console.error('Failed to fetch split PDFs', err);
+      } catch (e) {
+        console.error('Failed to fetch pdfs', e);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false }));
-      });
+      }
+    });
   } else if (req.url === '/split-pdf' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
@@ -337,6 +345,16 @@ const server = createServer((req, res) => {
     req.on('end', async () => {
       try {
         const { name } = JSON.parse(body);
+        const existing = await pool.query(
+          'SELECT 1 FROM pdf_pages WHERE original_name = $1 LIMIT 1',
+          [name]
+        );
+        if (existing.rowCount > 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'PDF already split' }));
+          return;
+        }
+
         const sourcePath = resolve(uploadDir, name);
         const fileBytes = readFileSync(sourcePath);
         const doc = await PDFDocument.load(fileBytes);
