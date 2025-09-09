@@ -5,9 +5,6 @@ import { resolve } from 'path';
 import { Pool } from 'pg';
 
 const required = [
-  'VITE_TRANZILA_SUPPLIER_ID',
-  'VITE_TRANZILA_PUBLIC_KEY',
-  'VITE_TRANZILA_PRIVATE_KEY',
   'PORT',
   'PGHOST',
   'PGUSER',
