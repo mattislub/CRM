@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createServer } from 'http';
-import { appendFile, existsSync, mkdirSync, writeFile, createReadStream } from 'fs';
+import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir } from 'fs';
 import { resolve } from 'path';
 import { Pool } from 'pg';
 
@@ -280,6 +280,20 @@ const server = createServer((req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false }));
       }
+    });
+  } else if (req.url === '/pdfs' && req.method === 'GET') {
+    readdir(uploadDir, (err, files) => {
+      if (err) {
+        console.error('Failed to read uploads directory', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+        return;
+      }
+      const pdfs = files
+        .filter(f => f.toLowerCase().endsWith('.pdf'))
+        .map(name => ({ name, url: `/uploads/${name}` }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(pdfs));
     });
   } else if (req.url === '/upload' && req.method === 'POST') {
     console.log('Received upload request:', req.url);

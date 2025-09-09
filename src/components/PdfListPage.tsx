@@ -2,25 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { Scissors } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 interface SavedPdf {
-  id: string;
   name: string;
-  data: string;
+  url: string;
 }
 
 export default function PdfListPage() {
   const [pdfs, setPdfs] = useState<SavedPdf[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem('pdfs');
-    if (stored) {
-      setPdfs(JSON.parse(stored));
-    }
+    fetch(`${API_URL}/pdfs`)
+      .then(res => res.json())
+      .then(data => setPdfs(data))
+      .catch(err => console.error('Failed to fetch pdfs', err));
   }, []);
 
   const splitPdf = async (pdf: SavedPdf) => {
-    const byteArray = Uint8Array.from(atob(pdf.data.split(',')[1]), c => c.charCodeAt(0));
-    const doc = await PDFDocument.load(byteArray);
+    const response = await fetch(`${API_URL}${pdf.url}`);
+    const arrayBuffer = await response.arrayBuffer();
+    const doc = await PDFDocument.load(arrayBuffer);
     const totalPages = doc.getPageCount();
     for (let i = 0; i < totalPages; i++) {
       const newDoc = await PDFDocument.create();
@@ -53,7 +55,7 @@ export default function PdfListPage() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {pdfs.map(pdf => (
-              <tr key={pdf.id}>
+              <tr key={pdf.url}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{pdf.name}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <button
