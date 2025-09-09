@@ -42,6 +42,34 @@ for (const key of required) {
 const port = parseInt(process.env.PORT, 10);
 
 const logFile = resolve(process.cwd(), 'server', 'logs.txt');
+const emailLogFile = resolve(process.cwd(), 'server', 'emails.txt');
+
+async function sendEmail({ to, subject, text, html }) {
+  try {
+    const nodemailer = await import('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to,
+      subject,
+      text,
+      html
+    });
+  } catch (err) {
+    const message = `Failed to send email to ${to}: ${err.message}`;
+    console.error(message);
+    appendFile(emailLogFile, message + '\n', () => {});
+    throw err;
+  }
+}
 
 const pool = new Pool({
   host: process.env.PGHOST,
@@ -85,6 +113,22 @@ const server = createServer((req, res) => {
         });
       res.writeHead(204);
       res.end();
+    });
+  } else if (req.url === '/email' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        await sendEmail(data);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
     });
   } else {
     res.writeHead(404);
