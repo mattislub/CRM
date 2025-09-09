@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Upload, Home, Users, FileText } from 'lucide-react';
 
 // Use an environment variable so the health check works even when the app is served statically
-const API_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = import.meta.env.VITE_API_URL;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,6 +13,11 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
 
   useEffect(() => {
+    if (!API_URL) {
+      console.warn('API_URL not set; skipping server health check');
+      return;
+    }
+
     fetch(`${API_URL}/health`)
       .then(res => res.json())
       .then(data => {
