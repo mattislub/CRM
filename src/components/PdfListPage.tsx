@@ -61,7 +61,7 @@ export default function PdfListPage() {
                     <button
                       onClick={() => splitPdf(pdf)}
                       disabled={pdf.splitPdfs.length > 0}
-                      className={`inline-flex items-center space-x-1 space-x-reverse ${pdf.splitPdfs.length > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-900'}`}`
+                      className={`inline-flex items-center space-x-1 space-x-reverse ${pdf.splitPdfs.length > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-900'}`}
                     >
                       <Scissors className="h-4 w-4" />
                       <span>פצל עמודים</span>
