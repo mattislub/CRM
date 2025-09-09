@@ -313,6 +313,22 @@ const server = createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(pdfs));
     });
+  } else if (req.url === '/split-pdfs' && req.method === 'GET') {
+    pool
+      .query('SELECT original_name, page_number, file_url FROM pdf_pages ORDER BY id')
+      .then(result => {
+        const pdfs = result.rows.map(row => ({
+          name: `${row.original_name} - page ${row.page_number}`,
+          url: row.file_url,
+        }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(pdfs));
+      })
+      .catch(err => {
+        console.error('Failed to fetch split PDFs', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      });
   } else if (req.url === '/split-pdf' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
