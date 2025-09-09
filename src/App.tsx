@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import UploadsPage from './components/UploadsPage';
 import DonorsPage from './components/DonorsPage';
+import PdfListPage from './components/PdfListPage';
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
         <Routes>
           <Route path="/" element={<UploadsPage />} />
           <Route path="/uploads" element={<UploadsPage />} />
+          <Route path="/pdfs" element={<PdfListPage />} />
           <Route path="/donors" element={<DonorsPage />} />
         </Routes>
       </Layout>

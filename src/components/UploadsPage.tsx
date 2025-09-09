@@ -17,6 +17,14 @@ export default function UploadsPage() {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+    });
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -58,15 +66,28 @@ export default function UploadsPage() {
 
         setUploadedFiles(prev => [...prev, newFile]);
 
+        const savePdf = async () => {
+          const data = await fileToBase64(file);
+          const stored = localStorage.getItem('pdfs');
+          const pdfs = stored ? JSON.parse(stored) : [];
+          pdfs.push({ id: newFile.id, name: file.name, data });
+          localStorage.setItem('pdfs', JSON.stringify(pdfs));
+        };
+
         // סימולציה של העלאה
         setTimeout(() => {
-          setUploadedFiles(prev => 
-            prev.map(f => 
-              f.id === newFile.id 
-                ? { ...f, status: Math.random() > 0.1 ? 'success' : 'error', errorMessage: 'שגיאה בהעלאת הקובץ' }
+          const isSuccess = Math.random() > 0.1;
+          setUploadedFiles(prev =>
+            prev.map(f =>
+              f.id === newFile.id
+                ? { ...f, status: isSuccess ? 'success' : 'error', errorMessage: 'שגיאה בהעלאת הקובץ' }
                 : f
             )
           );
+
+          if (isSuccess && fileType === 'pdf') {
+            savePdf();
+          }
         }, 2000);
       }
     });
