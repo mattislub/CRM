@@ -42,10 +42,12 @@ export default function DonorsPage() {
     file: null as File | null
   });
 
- const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
+  const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
+  const [sendingAll, setSendingAll] = useState(false);
 
 
   useEffect(() => {
