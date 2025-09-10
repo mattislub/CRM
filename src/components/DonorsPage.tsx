@@ -89,8 +89,11 @@ export default function DonorsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: donor.email,
-          subject: 'אישור תרומה',
-          text: `תודה על תרומתך בסך ${formatCurrency(donation.amount)}`,
+          subject: 'תודה על התרומה שלך',
+          text:
+            'שלום,\nמצורף הקבלה שלכם על התרומה שלכם.\nהתרומה שלכם מוכרת לפי סעיף 46.\n\nבברכה,\nצדקה עניי ישראל ובני ירושלים',
+          html:
+            '<p>שלום,</p><p>מצורף הקבלה שלכם על התרומה שלכם.</p><p>התרומה שלכם מוכרת לפי סעיף 46.</p><p>בברכה,<br/>צדקה עניי ישראל ובני ירושלים</p>',
           donationId,
           pdfUrl: donation.pdfUrl
         })
