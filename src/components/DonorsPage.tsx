@@ -506,9 +506,18 @@ export default function DonorsPage() {
                         
                         <div className="flex items-center space-x-2 space-x-reverse">
                           {donation.emailSent ? (
-                            <div className="flex items-center space-x-1 space-x-reverse text-green-600">
-                              <CheckCircle className="h-4 w-4" />
-                              <span className="text-sm">נשלח</span>
+                            <div className="flex items-center space-x-2 space-x-reverse">
+                              <div className="flex items-center space-x-1 space-x-reverse text-green-600">
+                                <CheckCircle className="h-4 w-4" />
+                                <span className="text-sm">נשלח</span>
+                              </div>
+                              <button
+                                onClick={() => handleSendEmail(donor.id, donation.id)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition-colors"
+                              >
+                                <Send className="h-3 w-3" />
+                                <span>שלח שוב</span>
+                              </button>
                             </div>
                           ) : (
                             <button
