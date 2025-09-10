@@ -42,7 +42,7 @@ export default function DonorsPage() {
     file: null as File | null
   });
 
- const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
