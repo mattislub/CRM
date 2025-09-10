@@ -44,6 +44,9 @@ export default function DonorsPage() {
 
   const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
+  const [minTotal, setMinTotal] = useState('');
+  const [maxTotal, setMaxTotal] = useState('');
+  const [onlyPending, setOnlyPending] = useState(false);
 
   useEffect(() => {
     fetch(`${API_URL}/donors`)
@@ -93,8 +96,11 @@ export default function DonorsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: donor.email,
-          subject: 'אישור תרומה',
-          text: `תודה על תרומתך בסך ${formatCurrency(donation.amount)}`,
+          subject: 'תודה על התרומה שלך',
+          text:
+            'שלום,\nמצורף הקבלה שלכם על התרומה שלכם.\nהתרומה שלכם מוכרת לפי סעיף 46.\n\nבברכה,\nצדקה עניי ישראל ובני ירושלים',
+          html:
+            '<p>שלום,</p><p>מצורף הקבלה שלכם על התרומה שלכם.</p><p>התרומה שלכם מוכרת לפי סעיף 46.</p><p>בברכה,<br/>צדקה עניי ישראל ובני ירושלים</p>',
           donationId,
           pdfUrl: donation.pdfUrl
         })
@@ -222,6 +228,21 @@ export default function DonorsPage() {
   const hasPendingEmails = donors.some(donor =>
     donor.donations.some(donation => !donation.emailSent)
   );
+
+  const filteredDonors = donors.filter(donor => {
+    const term = searchTerm.toLowerCase();
+    if (term) {
+      const matches =
+        donor.fullName.toLowerCase().includes(term) ||
+        donor.email.toLowerCase().includes(term) ||
+        donor.donorNumber.toLowerCase().includes(term);
+      if (!matches) return false;
+    }
+    if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
+    if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
+    if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
+    return true;
+  });
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('he-IL', {
@@ -466,12 +487,55 @@ export default function DonorsPage() {
 
       {/* Donors List */}
       <div className="bg-white rounded-lg shadow-lg">
-        <div className="px-6 py-4 border-b">
+        <div className="px-6 py-4 border-b space-y-4">
           <h3 className="text-lg font-semibold text-gray-900">רשימת תורמים</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">חיפוש</label>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="חפש לפי שם, מייל או מספר תורם"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">סה"כ מינימלי</label>
+              <input
+                type="number"
+                value={minTotal}
+                onChange={(e) => setMinTotal(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">סה"כ מקסימלי</label>
+              <input
+                type="number"
+                value={maxTotal}
+                onChange={(e) => setMaxTotal(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex items-center mt-6 md:mt-0">
+              <input
+                id="pending"
+                type="checkbox"
+                checked={onlyPending}
+                onChange={(e) => setOnlyPending(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+              />
+              <label htmlFor="pending" className="mr-2 text-sm text-gray-700">
+                רק עם מיילים בהמתנה
+              </label>
+            </div>
+          </div>
         </div>
-        
+
         <div className="divide-y divide-gray-200">
-          {donors.map((donor) => (
+          {filteredDonors.map((donor) => (
             <div key={donor.id} className="px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4 space-x-reverse">

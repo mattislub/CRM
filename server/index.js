@@ -45,7 +45,9 @@ async function sendEmail({ to, subject, text, html, attachments }) {
     });
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from:
+        process.env.SMTP_FROM ||
+        `צדקה עניי ישראל ובני ירושלים <${process.env.SMTP_USER}>`,
       to,
       subject,
       text,
