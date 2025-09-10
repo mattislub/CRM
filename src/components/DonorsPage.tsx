@@ -46,6 +46,8 @@ export default function DonorsPage() {
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
+  const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
+  const [sendingAll, setSendingAll] = useState(false);
 
 
   useEffect(() => {
