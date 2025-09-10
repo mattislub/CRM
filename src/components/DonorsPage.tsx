@@ -42,6 +42,9 @@ export default function DonorsPage() {
     file: null as File | null
   });
 
+  const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
+  const [sendingAll, setSendingAll] = useState(false);
+
   useEffect(() => {
     fetch(`${API_URL}/donors`)
       .then(res => res.json())
@@ -83,6 +86,7 @@ export default function DonorsPage() {
     const donor = donors.find(d => d.id === donorId);
     const donation = donor?.donations.find(d => d.id === donationId);
     if (!donor || !donation) return;
+    setSendingDonationId(donationId);
     try {
       await fetch(`${API_URL}/email`, {
         method: 'POST',
@@ -111,16 +115,23 @@ export default function DonorsPage() {
       );
     } catch (err) {
       console.error('Failed to send email', err);
+    } finally {
+      setSendingDonationId(null);
     }
   };
 
   const handleSendAllPendingEmails = async () => {
-    for (const donor of donors) {
-      for (const donation of donor.donations) {
-        if (!donation.emailSent) {
-          await handleSendEmail(donor.id, donation.id);
+    setSendingAll(true);
+    try {
+      for (const donor of donors) {
+        for (const donation of donor.donations) {
+          if (!donation.emailSent) {
+            await handleSendEmail(donor.id, donation.id);
+          }
         }
       }
+    } finally {
+      setSendingAll(false);
     }
   };
 
@@ -188,6 +199,26 @@ export default function DonorsPage() {
     }
   };
 
+  const renderSendButton = (donation: Donation, donorId: string) => {
+    const isSending = sendingDonationId === donation.id;
+    return (
+      <button
+        onClick={() => handleSendEmail(donorId, donation.id)}
+        disabled={isSending}
+        className={`bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition active:scale-95 ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        {isSending ? (
+          <span>מעבד...</span>
+        ) : (
+          <>
+            <Send className="h-3 w-3" />
+            <span>{donation.emailSent ? 'שלח שוב' : 'שלח מייל'}</span>
+          </>
+        )}
+      </button>
+    );
+  };
+
   const hasPendingEmails = donors.some(donor =>
     donor.donations.some(donation => !donation.emailSent)
   );
@@ -210,11 +241,17 @@ export default function DonorsPage() {
         <div className="flex items-center space-x-3 space-x-reverse">
           <button
             onClick={handleSendAllPendingEmails}
-            disabled={!hasPendingEmails}
-            className={`bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition-colors ${!hasPendingEmails ? 'opacity-50 cursor-not-allowed hover:bg-green-600' : ''}`}
+            disabled={!hasPendingEmails || sendingAll}
+            className={`bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition active:scale-95 ${(!hasPendingEmails || sendingAll) ? 'opacity-50 cursor-not-allowed hover:bg-green-600' : ''}`}
           >
-            <Send className="h-5 w-5" />
-            <span>שלח כל הקבלות שעדיין לא נשלחו</span>
+            {sendingAll ? (
+              <span>מעבד...</span>
+            ) : (
+              <>
+                <Send className="h-5 w-5" />
+                <span>שלח כל הקבלות שעדיין לא נשלחו</span>
+              </>
+            )}
           </button>
           <button
             onClick={() => setShowAddDonor(true)}
@@ -497,60 +534,45 @@ export default function DonorsPage() {
                               {donation.date.toLocaleDateString('he-IL')} | {donation.description}
                             </div>
                             {donation.emailSent && donation.sentDate && (
-                              <div className="text-xs text-green-600 flex items-center space-x-1 space-x-reverse mt-1">
-                                <CheckCircle className="h-3 w-3" />
-                                <span>נשלח ב-{donation.sentDate.toLocaleDateString('he-IL')}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-2 space-x-reverse">
-                          {donation.pdfUrl && (
-                            <a
-                              href={`${API_URL}${donation.pdfUrl}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block w-16 h-16 border rounded overflow-hidden"
-                              title="צפה ב-PDF"
-                            >
-                              <iframe
-                                src={`${API_URL}${donation.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                                className="w-full h-full pointer-events-none"
-                                title="PDF Preview"
-                              />
-                            </a>
-                          )}
-
-                          {donation.emailSent ? (
-                            <div className="flex items-center space-x-2 space-x-reverse">
-                              <div className="flex items-center space-x-1 space-x-reverse text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                <span className="text-sm">נשלח</span>
-                              </div>
-                              <button
-                                onClick={() => handleSendEmail(donor.id, donation.id)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition-colors"
-                              >
-                                <Send className="h-3 w-3" />
-                                <span>שלח שוב</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleSendEmail(donor.id, donation.id)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition-colors"
-                            >
-                              <Send className="h-3 w-3" />
-                              <span>שלח מייל</span>
-                            </button>
-                          )}
-                        </div>
+                      <div className="text-xs text-green-600 flex items-center space-x-1 space-x-reverse mt-1">
+                        <CheckCircle className="h-3 w-3" />
+                        <span>נשלח ב-{donation.sentDate.toLocaleDateString('he-IL')}</span>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
-              )}
+
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  {donation.pdfUrl && (
+                    <a
+                      href={`${API_URL}${donation.pdfUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-16 h-16 border rounded overflow-hidden"
+                      title="צפה ב-PDF"
+                    >
+                      <iframe
+                        src={`${API_URL}${donation.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                        className="w-full h-full pointer-events-none"
+                        title="PDF Preview"
+                      />
+                    </a>
+                  )}
+
+                  {donation.emailSent && (
+                    <div className="flex items-center space-x-1 space-x-reverse text-green-600">
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="text-sm">נשלח</span>
+                    </div>
+                  )}
+
+                  {renderSendButton(donation, donor.id)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
             </div>
           ))}
         </div>
