@@ -505,6 +505,22 @@ export default function DonorsPage() {
                         </div>
                         
                         <div className="flex items-center space-x-2 space-x-reverse">
+                          {donation.pdfUrl && (
+                            <a
+                              href={`${API_URL}${donation.pdfUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block w-16 h-16 border rounded overflow-hidden"
+                              title="צפה ב-PDF"
+                            >
+                              <iframe
+                                src={`${API_URL}${donation.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                                className="w-full h-full pointer-events-none"
+                                title="PDF Preview"
+                              />
+                            </a>
+                          )}
+
                           {donation.emailSent ? (
                             <div className="flex items-center space-x-1 space-x-reverse text-green-600">
                               <CheckCircle className="h-4 w-4" />
@@ -517,16 +533,6 @@ export default function DonorsPage() {
                             >
                               <Send className="h-3 w-3" />
                               <span>שלח מייל</span>
-                            </button>
-                          )}
-                          
-                          {donation.pdfUrl && (
-                            <button
-                              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition-colors"
-                              title="הורד PDF"
-                            >
-                              <FileText className="h-3 w-3" />
-                              <span>PDF</span>
                             </button>
                           )}
                         </div>
