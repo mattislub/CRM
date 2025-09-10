@@ -42,11 +42,11 @@ export default function DonorsPage() {
     file: null as File | null
   });
 
-  const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
-  const [sendingAll, setSendingAll] = useState(false);
+ const [searchTerm, setSearchTerm] = useState('');
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
+
 
   useEffect(() => {
     fetch(`${API_URL}/donors`)
