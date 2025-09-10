@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createServer } from 'http';
 import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir, readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, basename } from 'path';
 import { Pool } from 'pg';
 import { PDFDocument } from 'pdf-lib';
 import XLSX from 'xlsx';
@@ -32,7 +32,7 @@ if (!existsSync(splitDir)) {
   mkdirSync(splitDir, { recursive: true });
 }
 
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, attachments }) {
   try {
     const nodemailer = await import('nodemailer');
     const transporter = nodemailer.createTransport({
@@ -49,7 +49,8 @@ async function sendEmail({ to, subject, text, html }) {
       to,
       subject,
       text,
-      html
+      html,
+      attachments
     });
   } catch (err) {
     const message = `Failed to send email to ${to}: ${err.message}`;
@@ -164,7 +165,19 @@ const server = createServer((req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        await sendEmail(data);
+        const attachments = [];
+        if (data.pdfUrl) {
+          let filePath;
+          if (data.pdfUrl.startsWith('/uploads/')) {
+            filePath = resolve(uploadDir, '.' + data.pdfUrl.replace('/uploads', ''));
+          } else if (data.pdfUrl.startsWith('/split/')) {
+            filePath = resolve(splitDir, '.' + data.pdfUrl.replace('/split', ''));
+          }
+          if (filePath) {
+            attachments.push({ filename: basename(filePath), path: filePath });
+          }
+        }
+        await sendEmail({ ...data, attachments });
         if (data.donationId) {
           pool
             .query('UPDATE donations SET email_sent = true, sent_date = NOW() WHERE id = $1', [data.donationId])
