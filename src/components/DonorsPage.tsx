@@ -91,7 +91,8 @@ export default function DonorsPage() {
           to: donor.email,
           subject: 'אישור תרומה',
           text: `תודה על תרומתך בסך ${formatCurrency(donation.amount)}`,
-          donationId
+          donationId,
+          pdfUrl: donation.pdfUrl
         })
       });
       setDonors(prev =>
