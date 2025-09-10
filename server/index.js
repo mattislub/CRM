@@ -335,12 +335,37 @@ const server = createServer((req, res) => {
           return acc;
         }, {});
 
+        const { rows: assignmentRows } = await pool.query(
+          `SELECT pp.original_name,
+                  COALESCE(json_agg(json_build_object(
+                    'donorNumber', d.donor_number,
+                    'fullName', d.full_name,
+                    'amount', dn.amount,
+                    'donationDate', dn.donation_date
+                  )) FILTER (WHERE dn.id IS NOT NULL), '[]') AS assignments
+             FROM pdf_pages pp
+             LEFT JOIN donations dn ON dn.pdf_url = pp.file_url
+             LEFT JOIN donors d ON dn.donor_id = d.id
+            GROUP BY pp.original_name`
+        );
+        const assignmentsMap = assignmentRows.reduce((acc, row) => {
+          acc[row.original_name] = row.assignments.map(a => ({
+            donorNumber: a.donorNumber,
+            fullName: a.fullName,
+            amount: parseFloat(a.amount),
+            donationDate: a.donationDate,
+          }));
+          return acc;
+        }, {});
+
         const pdfs = files
           .filter(f => f.toLowerCase().endsWith('.pdf'))
           .map(name => ({
             name,
             url: `/uploads/${name}`,
             splitPdfs: grouped[name] || [],
+            excelAssigned: (assignmentsMap[name] || []).length > 0,
+            assignments: assignmentsMap[name] || [],
           }));
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -410,7 +435,18 @@ const server = createServer((req, res) => {
           'SELECT file_url FROM pdf_pages WHERE original_name = $1 ORDER BY page_number',
           [name]
         );
+        // prevent re-assignment if donations already exist for this PDF
+        const { rowCount: alreadyAssigned } = await pool.query(
+          `SELECT 1 FROM pdf_pages pp JOIN donations dn ON dn.pdf_url = pp.file_url WHERE pp.original_name = $1 LIMIT 1`,
+          [name]
+        );
+        if (alreadyAssigned > 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'PDF already assigned' }));
+          return;
+        }
         const pages = pageRows.map(r => r.file_url);
+        const assignments = [];
         for (let i = 1; i < rows.length && i - 1 < pages.length; i++) {
           const row = rows[i];
           const donorNumber = row[0]?.toString() || '';
@@ -435,9 +471,10 @@ const server = createServer((req, res) => {
             'INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url) VALUES($1, $2, $3, $4, $5)',
             [donorId, amount, donationDate, row[2] || '', pages[i - 1]]
           );
+          assignments.push({ donorNumber, fullName, amount, donationDate });
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
+        res.end(JSON.stringify({ success: true, assignments }));
       } catch (err) {
         console.error('Failed to assign donors from excel', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
