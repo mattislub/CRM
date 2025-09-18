@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X, Upload } from 'lucide-react';
+import { HDate } from '@hebcal/core';
 
 // Use an environment variable so API calls work when the app is served statically
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -12,6 +13,8 @@ interface Donation {
   pdfUrl?: string;
   emailSent: boolean;
   sentDate?: Date;
+  hebrewDate?: string;
+  sentHebrewDate?: string;
 }
 
 interface Donor {
@@ -64,6 +67,41 @@ export default function DonorsPage() {
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedSenders, setSelectedSenders] = useState<Record<string, SenderOption>>({});
 
+  const formatHebrewDate = (dateInput: Date | string | undefined | null) => {
+    if (!dateInput) return '';
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (Number.isNaN(date.getTime())) return '';
+    try {
+      const hebrewDate = new HDate(date) as unknown as {
+        renderGematriya?: () => string;
+        render?: () => string;
+      };
+      if (typeof hebrewDate.renderGematriya === 'function') {
+        return hebrewDate.renderGematriya();
+      }
+      if (typeof hebrewDate.render === 'function') {
+        return hebrewDate.render();
+      }
+      return '';
+    } catch (error) {
+      console.error('Failed to format Hebrew date', error);
+      return '';
+    }
+  };
+
+  const createDonation = (donation: any): Donation => {
+    const hasDate = Boolean(donation.date);
+    const date = hasDate ? new Date(donation.date) : new Date();
+    const sentDate = donation.sentDate ? new Date(donation.sentDate) : undefined;
+    return {
+      ...donation,
+      date,
+      sentDate,
+      hebrewDate: hasDate ? formatHebrewDate(date) : undefined,
+      sentHebrewDate: sentDate ? formatHebrewDate(sentDate) : undefined
+    };
+  };
+
   useEffect(() => {
     setSelectedSenders(prev => {
       const updatedSelections: Record<string, SenderOption> = {};
@@ -90,9 +128,8 @@ export default function DonorsPage() {
   ) => {
     const donorGreeting = donor.fullName?.trim() || 'תורם יקר';
     const donationAmount = formatCurrency(donation.amount);
-    const donationDate = donation.date
-      ? new Date(donation.date).toLocaleDateString('he-IL')
-      : '';
+    const donationDate = donation.date ? donation.date.toLocaleDateString('he-IL') : '';
+    const donationHebrewDate = donation.hebrewDate || formatHebrewDate(donation.date);
     const donationPurpose = donation.description?.trim();
 
     const baseText = [
@@ -103,6 +140,13 @@ export default function DonorsPage() {
 
     if (donationPurpose) {
       baseText.splice(2, 0, `ייעוד התרומה: ${donationPurpose}.`);
+    }
+
+    if (donationDate) {
+      const dateLine = donationHebrewDate
+        ? `תאריך התרומה: ${donationDate} (${donationHebrewDate})`
+        : `תאריך התרומה: ${donationDate}`;
+      baseText.splice(baseText.length - 1, 0, dateLine);
     }
 
     const baseHtml = (
@@ -134,6 +178,7 @@ export default function DonorsPage() {
               <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">תודה מעומק הלב על תרומתך בסך <strong>${donationAmount}</strong>.</p>
               ${donationPurpose ? `<p style="margin:0 0 12px;font-size:16px;line-height:1.8;">ייעוד התרומה: ${donationPurpose}.</p>` : ''}
               <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">מצורפת הקבלה עבור תרומתך המכובדת, המוכרת לפי סעיף 46.</p>
+              ${donationDate ? `<p style="margin:0 0 12px;font-size:16px;line-height:1.8;">תאריך התרומה: ${donationDate}${donationHebrewDate ? ` (${donationHebrewDate})` : ''}</p>` : ''}
               <p style="margin:0 0 20px;font-size:16px;line-height:1.8;">${blessingLine}</p>
               <div style="margin:32px 0;text-align:center;">
                 <a href="${donationLink}" style="display:inline-block;padding:14px 32px;background-color:#0f766e;color:#ffffff;border-radius:999px;text-decoration:none;font-size:16px;font-weight:700;">לתרומות</a>
@@ -141,7 +186,7 @@ export default function DonorsPage() {
               <div style="padding:20px;background-color:#f0fdfa;border-radius:16px;font-size:14px;line-height:1.8;">
                 <p style="margin:0 0 6px;font-weight:600;">פרטי התרומה</p>
                 <p style="margin:0;">סכום התרומה: ${donationAmount}</p>
-                ${donationDate ? `<p style="margin:0;">תאריך התרומה: ${donationDate}</p>` : ''}
+                ${donationDate ? `<p style="margin:0;">תאריך התרומה: ${donationDate}${donationHebrewDate ? ` (${donationHebrewDate})` : ''}</p>` : ''}
                 ${donationPurpose ? `<p style="margin:0;">ייעוד התרומה: ${donationPurpose}</p>` : ''}
               </div>
               <p style="margin:24px 0 4px;font-size:16px;line-height:1.8;">בברכה,</p>
@@ -205,11 +250,7 @@ export default function DonorsPage() {
       .then(data => {
         const loaded = data.map((d: any) => ({
           ...d,
-          donations: d.donations.map((dn: any) => ({
-            ...dn,
-            date: new Date(dn.date),
-            sentDate: dn.sentDate ? new Date(dn.sentDate) : undefined,
-          }))
+          donations: d.donations.map((dn: any) => createDonation(dn))
         }));
         setDonors(loaded);
       })
@@ -331,6 +372,8 @@ export default function DonorsPage() {
           senderName
         })
       });
+      const sentDate = new Date();
+      const sentHebrewDate = formatHebrewDate(sentDate);
       setDonors(prev =>
         prev.map(d =>
           d.id === donorId
@@ -338,7 +381,12 @@ export default function DonorsPage() {
                 ...d,
                 donations: d.donations.map(dd =>
                   dd.id === donationId
-                    ? { ...dd, emailSent: true, sentDate: new Date() }
+                    ? {
+                        ...dd,
+                        emailSent: true,
+                        sentDate,
+                        sentHebrewDate
+                      }
                     : dd
                 )
               }
@@ -414,11 +462,7 @@ export default function DonorsPage() {
                 ...d,
                 donations: [
                   ...d.donations,
-                  {
-                    ...data,
-                    date: new Date(data.date),
-                    sentDate: data.sentDate ? new Date(data.sentDate) : undefined
-                  }
+                  createDonation(data)
                 ],
                 totalDonations: d.totalDonations + data.amount
               }
@@ -479,22 +523,22 @@ export default function DonorsPage() {
     donor.donations.some(donation => !donation.emailSent)
   );
 
-    const filteredDonors = donors.filter(donor => {
-      const term = searchTerm.toLowerCase();
-      if (term) {
-        const matches =
-          donor.fullName.toLowerCase().includes(term) ||
-          donor.email.toLowerCase().includes(term) ||
-          donor.donorNumber.toLowerCase().includes(term);
-        if (!matches) return false;
-      }
-      if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
-      if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
-      if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
-      return true;
-    });
+  const filteredDonors = donors.filter(donor => {
+    const term = searchTerm.toLowerCase();
+    if (term) {
+      const matches =
+        donor.fullName.toLowerCase().includes(term) ||
+        donor.email.toLowerCase().includes(term) ||
+        donor.donorNumber.toLowerCase().includes(term);
+      if (!matches) return false;
+    }
+    if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
+    if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
+    if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
+    return true;
+  });
 
-    return (
+  return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
@@ -910,12 +954,18 @@ export default function DonorsPage() {
                               {formatCurrency(donation.amount)}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {donation.date.toLocaleDateString('he-IL')} | {donation.description}
+                              {donation.date.toLocaleDateString('he-IL')}
+                              {donation.hebrewDate ? ` | ${donation.hebrewDate}` : ''}
+                              {' | '}
+                              {donation.description}
                             </div>
                             {donation.emailSent && donation.sentDate && (
                       <div className="text-xs text-green-600 flex items-center space-x-1 space-x-reverse mt-1">
                         <CheckCircle className="h-3 w-3" />
-                        <span>נשלח ב-{donation.sentDate.toLocaleDateString('he-IL')}</span>
+                        <span>
+                          נשלח ב-{donation.sentDate.toLocaleDateString('he-IL')}
+                          {donation.sentHebrewDate ? ` (${donation.sentHebrewDate})` : ''}
+                        </span>
                       </div>
                     )}
                   </div>
