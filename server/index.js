@@ -32,7 +32,7 @@ if (!existsSync(splitDir)) {
   mkdirSync(splitDir, { recursive: true });
 }
 
-async function sendEmail({ to, subject, text, html, attachments }) {
+async function sendEmail({ to, subject, text, html, attachments, senderName }) {
   try {
     const nodemailer = await import('nodemailer');
     const transporter = nodemailer.createTransport({
@@ -44,10 +44,23 @@ async function sendEmail({ to, subject, text, html, attachments }) {
       }
     });
 
+    const defaultFrom =
+      process.env.SMTP_FROM ||
+      (process.env.SMTP_USER
+        ? `צדקה עניי ישראל ובני ירושלים <${process.env.SMTP_USER}>`
+        : undefined);
+
+    let from = defaultFrom;
+    if (senderName) {
+      const match = process.env.SMTP_FROM?.match(/<([^>]+)>/);
+      const emailAddress = match?.[1] || process.env.SMTP_USER;
+      if (emailAddress) {
+        from = `${senderName} <${emailAddress}>`;
+      }
+    }
+
     await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM ||
-        `צדקה עניי ישראל ובני ירושלים <${process.env.SMTP_USER}>`,
+      from,
       to,
       subject,
       text,

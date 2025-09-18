@@ -24,6 +24,11 @@ interface Donor {
 }
 
 export default function DonorsPage() {
+  const SENDER_OPTIONS = [
+    { senderName: 'צדקת עניי ארץ ישראל', label: 'שלח מייל בשם צדקת עניי ארץ ישראל' },
+    { senderName: 'בני ירושלים', label: 'שלח מייל בשם בני ירושלים' }
+  ] as const;
+
   const [donors, setDonors] = useState<Donor[]>([]);
 
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
@@ -165,7 +170,12 @@ export default function DonorsPage() {
     }
   };
 
-  const handleSendEmail = async (donorId: string, donationId: string) => {
+    const handleSendEmail = async (
+    donorId: string,
+    donationId: string,
+    senderName = SENDER_OPTIONS[0].senderName
+  ) => {
+
     const donor = donors.find(d => d.id === donorId);
     const donation = donor?.donations.find(d => d.id === donationId);
     if (!donor || !donation) return;
@@ -182,7 +192,8 @@ export default function DonorsPage() {
           html:
             '<p>שלום,</p><p>מצורף הקבלה שלכם על התרומה שלכם.</p><p>התרומה שלכם מוכרת לפי סעיף 46.</p><p>בברכה,<br/>צדקה עניי ישראל ובני ירושלים</p>',
           donationId,
-          pdfUrl: donation.pdfUrl
+          pdfUrl: donation.pdfUrl,
+          senderName
         })
       });
       setDonors(prev =>
@@ -212,7 +223,7 @@ export default function DonorsPage() {
       for (const donor of donors) {
         for (const donation of donor.donations) {
           if (!donation.emailSent) {
-            await handleSendEmail(donor.id, donation.id);
+            await handleSendEmail(donor.id, donation.id, SENDER_OPTIONS[0].senderName);
           }
         }
       }
@@ -288,20 +299,25 @@ export default function DonorsPage() {
   const renderSendButton = (donation: Donation, donorId: string) => {
     const isSending = sendingDonationId === donation.id;
     return (
-      <button
-        onClick={() => handleSendEmail(donorId, donation.id)}
-        disabled={isSending}
-        className={`bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition active:scale-95 ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        {isSending ? (
-          <span>מעבד...</span>
-        ) : (
-          <>
-            <Send className="h-3 w-3" />
-            <span>{donation.emailSent ? 'שלח שוב' : 'שלח מייל'}</span>
-          </>
-        )}
-      </button>
+      <div className="flex flex-col space-y-2">
+        {SENDER_OPTIONS.map(option => (
+          <button
+            key={option.senderName}
+            onClick={() => handleSendEmail(donorId, donation.id, option.senderName)}
+            disabled={isSending}
+            className={`bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition active:scale-95 ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isSending ? (
+              <span>מעבד...</span>
+            ) : (
+              <>
+                <Send className="h-3 w-3" />
+                <span>{option.label}</span>
+              </>
+            )}
+          </button>
+        ))}
+      </div>
     );
   };
 
