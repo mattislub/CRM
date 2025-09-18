@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X, Upload } from 'lucide-react';
+import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X, Upload, Pencil } from 'lucide-react';
 
 // Use an environment variable so API calls work when the app is served statically
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -47,6 +47,20 @@ export default function DonorsPage() {
     date: '',
     description: '',
     file: null as File | null
+  });
+  const [editDonation, setEditDonation] = useState<{ donor: Donor; donation: Donation } | null>(null);
+  const [editDonationData, setEditDonationData] = useState<{
+    amount: string;
+    date: string;
+    description: string;
+    file: File | null;
+    pdfUrl?: string;
+  }>({
+    amount: '',
+    date: '',
+    description: '',
+    file: null,
+    pdfUrl: undefined,
   });
   const excelInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
@@ -306,6 +320,18 @@ export default function DonorsPage() {
     }
   };
 
+  const openEditDonation = (donor: Donor, donation: Donation) => {
+    const donationDate = donation.date instanceof Date ? donation.date : new Date(donation.date);
+    setEditDonation({ donor, donation });
+    setEditDonationData({
+      amount: donation.amount.toString(),
+      date: donationDate.toISOString().split('T')[0],
+      description: donation.description || '',
+      file: null,
+      pdfUrl: donation.pdfUrl,
+    });
+  };
+
   const handleSendEmail = async (
     donorId: string,
     donationId: string,
@@ -429,6 +455,94 @@ export default function DonorsPage() {
       setNewDonation({ amount: '', date: '', description: '', file: null });
     } catch (err) {
       console.error('Failed to add donation', err);
+    }
+  };
+
+  const handleUpdateDonation = async () => {
+    if (!editDonation) return;
+    if (!editDonationData.amount || !editDonationData.date || !editDonationData.description) return;
+
+    try {
+      let pdfUrl = editDonationData.pdfUrl;
+      if (editDonationData.file) {
+        const content = await fileToBase64(editDonationData.file);
+        const uploadRes = await fetch(`${API_URL}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: editDonationData.file.name, content })
+        });
+        const uploadData = await uploadRes.json();
+        pdfUrl = uploadData.url;
+      }
+
+      const res = await fetch(`${API_URL}/donations/${editDonation.donation.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(editDonationData.amount),
+          date: editDonationData.date,
+          description: editDonationData.description,
+          pdfUrl,
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('Failed to update donation', data);
+        return;
+      }
+
+      const updatedAmount = typeof data.amount === 'number' ? data.amount : parseFloat(data.amount);
+      if (Number.isNaN(updatedAmount)) {
+        console.error('Invalid donation amount received from server');
+        return;
+      }
+
+      const updatedDate = data.date ? new Date(data.date) : new Date(editDonationData.date);
+      const updatedSentDate = data.sentDate ? new Date(data.sentDate) : undefined;
+
+      let nextDonors: Donor[] = [];
+      setDonors(prev => {
+        nextDonors = prev.map(donor => {
+          if (donor.id !== editDonation.donor.id) {
+            return donor;
+          }
+
+          const oldDonation = donor.donations.find(d => d.id === editDonation.donation.id);
+          const oldAmount = oldDonation ? oldDonation.amount : 0;
+
+          return {
+            ...donor,
+            donations: donor.donations.map(d =>
+              d.id === editDonation.donation.id
+                ? {
+                    ...d,
+                    amount: updatedAmount,
+                    date: updatedDate,
+                    description: data.description || '',
+                    pdfUrl: data.pdfUrl || undefined,
+                    emailSent: data.emailSent ?? d.emailSent,
+                    sentDate: updatedSentDate,
+                  }
+                : d
+            ),
+            totalDonations: donor.totalDonations - oldAmount + updatedAmount,
+          };
+        });
+        return nextDonors;
+      });
+
+      setSelectedDonor(prevSelected => {
+        if (!prevSelected || prevSelected.id !== editDonation.donor.id) {
+          return prevSelected;
+        }
+        return nextDonors.find(donor => donor.id === editDonation.donor.id) || prevSelected;
+      });
+
+      setEditDonation(null);
+      setEditDonationData({ amount: '', date: '', description: '', file: null, pdfUrl: undefined });
+    } catch (err) {
+      console.error('Failed to update donation', err);
     }
   };
 
@@ -761,6 +875,123 @@ export default function DonorsPage() {
         </div>
       )}
 
+      {/* Edit Donation Modal */}
+      {editDonation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">ערוך תרומה</h3>
+              <button
+                onClick={() => {
+                  setEditDonation(null);
+                  setEditDonationData({ amount: '', date: '', description: '', file: null, pdfUrl: undefined });
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  סכום
+                </label>
+                <input
+                  type="number"
+                  value={editDonationData.amount}
+                  onChange={(e) => setEditDonationData(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס סכום"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תאריך
+                </label>
+                <input
+                  type="date"
+                  value={editDonationData.date}
+                  onChange={(e) => setEditDonationData(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תיאור
+                </label>
+                <input
+                  type="text"
+                  value={editDonationData.description}
+                  onChange={(e) => setEditDonationData(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס תיאור"
+                />
+              </div>
+
+              {editDonationData.pdfUrl && !editDonationData.file && (
+                <div className="border border-gray-200 rounded-md p-3 flex items-center justify-between text-sm">
+                  <a
+                    href={`${API_URL}${editDonationData.pdfUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    צפה בקובץ הנוכחי
+                  </a>
+                  <button
+                    onClick={() => setEditDonationData(prev => ({ ...prev, pdfUrl: undefined }))}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    הסר קובץ
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  החלף קובץ PDF
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) =>
+                    setEditDonationData(prev => ({
+                      ...prev,
+                      file: e.target.files ? e.target.files[0] : null,
+                    }))
+                  }
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  אם לא תבחר קובץ חדש יישמר הקובץ הנוכחי.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 space-x-reverse mt-6">
+              <button
+                onClick={() => {
+                  setEditDonation(null);
+                  setEditDonationData({ amount: '', date: '', description: '', file: null, pdfUrl: undefined });
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={handleUpdateDonation}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              >
+                עדכן תרומה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
@@ -944,6 +1175,14 @@ export default function DonorsPage() {
                       <span className="text-sm">נשלח</span>
                     </div>
                   )}
+
+                  <button
+                    onClick={() => openEditDonation(donor, donation)}
+                    className="flex items-center space-x-1 space-x-reverse border border-blue-200 text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-50 transition-colors"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    <span>ערוך</span>
+                  </button>
 
                   {renderSendButton(donation, donor.id)}
                 </div>
