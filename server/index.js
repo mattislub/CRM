@@ -244,21 +244,35 @@ const server = createServer((req, res) => {
       try {
         const data = JSON.parse(body);
         pool
-          .query(
-            'INSERT INTO donors(donor_number, full_name, email) VALUES($1, $2, $3) RETURNING id',
-            [data.donorNumber, data.fullName, data.email]
-          )
-          .then(result => {
-            const donor = {
-              id: result.rows[0].id,
-              donorNumber: data.donorNumber,
-              fullName: data.fullName,
-              email: data.email,
-              donations: [],
-              totalDonations: 0,
-            };
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(donor));
+          .query('SELECT id FROM donors WHERE donor_number = $1', [data.donorNumber])
+          .then(existing => {
+            if (existing.rowCount > 0) {
+              res.writeHead(409, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  message: 'Donor with this donor number already exists',
+                })
+              );
+              return;
+            }
+            return pool
+              .query(
+                'INSERT INTO donors(donor_number, full_name, email) VALUES($1, $2, $3) RETURNING id',
+                [data.donorNumber, data.fullName, data.email]
+              )
+              .then(result => {
+                const donor = {
+                  id: result.rows[0].id,
+                  donorNumber: data.donorNumber,
+                  fullName: data.fullName,
+                  email: data.email,
+                  donations: [],
+                  totalDonations: 0,
+                };
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(donor));
+              });
           })
           .catch(err => {
             console.error('Failed to add donor', err);
@@ -479,6 +493,132 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ success: true, assignments }));
       } catch (err) {
         console.error('Failed to assign donors from excel', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+  } else if (req.url === '/donors/import' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', async () => {
+      try {
+        const { fileName, content } = JSON.parse(body);
+        if (!fileName || !content) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Invalid request body' }));
+          return;
+        }
+
+        const buffer = Buffer.from(content, 'base64');
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!sheet) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Excel file is empty' }));
+          return;
+        }
+
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        if (rows.length <= 1) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Excel file does not contain data rows' }));
+          return;
+        }
+
+        const donorsFromFile = rows
+          .map((row, index) => ({
+            rowNumber: index + 1,
+            fullName: (row[0] || '').toString().trim(),
+            donorNumber: (row[1] || '').toString().trim(),
+            email: (row[2] || '').toString().trim(),
+          }))
+          .filter(entry => entry.rowNumber !== 1); // Skip header row
+
+        const errors = [];
+        const validDonors = [];
+        for (const donor of donorsFromFile) {
+          if (!donor.fullName || !donor.donorNumber || !donor.email) {
+            errors.push({ rowNumber: donor.rowNumber, reason: 'Missing required fields' });
+            continue;
+          }
+          validDonors.push(donor);
+        }
+
+        if (validDonors.length === 0) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              success: true,
+              inserted: [],
+              duplicates: [],
+              errors,
+            })
+          );
+          return;
+        }
+
+        const donorNumbers = validDonors.map(d => d.donorNumber);
+        const { rows: existingRows } = await pool.query(
+          'SELECT donor_number FROM donors WHERE donor_number = ANY($1)',
+          [donorNumbers]
+        );
+        const existingNumbers = new Set(existingRows.map(row => row.donor_number));
+        const seenInFile = new Set();
+        const duplicates = [];
+        const inserted = [];
+
+        for (const donor of validDonors) {
+          if (existingNumbers.has(donor.donorNumber)) {
+            duplicates.push({
+              rowNumber: donor.rowNumber,
+              donorNumber: donor.donorNumber,
+              reason: 'Donor already exists in the system',
+            });
+            continue;
+          }
+          if (seenInFile.has(donor.donorNumber)) {
+            duplicates.push({
+              rowNumber: donor.rowNumber,
+              donorNumber: donor.donorNumber,
+              reason: 'Duplicate donor number in file',
+            });
+            continue;
+          }
+
+          try {
+            const result = await pool.query(
+              'INSERT INTO donors(donor_number, full_name, email) VALUES($1, $2, $3) RETURNING id',
+              [donor.donorNumber, donor.fullName, donor.email]
+            );
+            inserted.push({
+              id: result.rows[0].id,
+              donorNumber: donor.donorNumber,
+              fullName: donor.fullName,
+              email: donor.email,
+            });
+            seenInFile.add(donor.donorNumber);
+          } catch (err) {
+            console.error('Failed to insert donor from import', err);
+            errors.push({
+              rowNumber: donor.rowNumber,
+              reason: 'Failed to insert donor',
+            });
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            success: true,
+            inserted,
+            duplicates,
+            errors,
+          })
+        );
+      } catch (err) {
+        console.error('Failed to import donors from excel', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false }));
       }
