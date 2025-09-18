@@ -659,6 +659,36 @@ const server = createServer((req, res) => {
         const workbook = XLSX.read(buffer, { type: 'buffer' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const headerRow = rows[0] || [];
+        const dateColumnIndex = headerRow.findIndex(cell => {
+          if (cell == null) {
+            return false;
+          }
+          return cell.toString().trim() === 'תאריך';
+        });
+
+        const parseExcelDate = value => {
+          if (value == null || value === '') {
+            return undefined;
+          }
+          if (typeof value === 'number') {
+            const parsed = XLSX.SSF.parse_date_code(value);
+            if (!parsed) {
+              return undefined;
+            }
+            const { y, m, d, H = 0, M = 0, S = 0 } = parsed;
+            return new Date(Date.UTC(y, m - 1, d, H, M, Math.floor(S)));
+          }
+          const text = value.toString().trim();
+          if (!text) {
+            return undefined;
+          }
+          const parsed = new Date(text);
+          if (Number.isNaN(parsed.getTime())) {
+            return undefined;
+          }
+          return parsed;
+        };
         const { rows: pageRows } = await pool.query(
           'SELECT file_url FROM pdf_pages WHERE original_name = $1 ORDER BY page_number',
           [name]
@@ -680,7 +710,9 @@ const server = createServer((req, res) => {
           const donorNumber = row[0]?.toString() || '';
           const fullName = `${row[6] || ''} ${row[8] || ''} ${row[7] || ''}`.trim() || 'Unknown Donor';
           const amount = parseFloat(row[4]) || 0;
-          const donationDate = row[12] ? new Date(row[12]) : new Date();
+          const dateCellIndex = dateColumnIndex >= 0 ? dateColumnIndex : 12;
+          const donationDate =
+            parseExcelDate(row[dateCellIndex]) || (dateColumnIndex >= 0 ? undefined : parseExcelDate(row[12])) || new Date();
           let donorId;
           const existing = await pool.query(
             'SELECT id FROM donors WHERE donor_number = $1',
