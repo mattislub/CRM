@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X, Upload } from 'lucide-react';
 
 // Use an environment variable so API calls work when the app is served statically
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -38,6 +38,7 @@ export default function DonorsPage() {
     fullName: '',
     email: ''
   });
+  const [addDonorError, setAddDonorError] = useState<string | null>(null);
 
   const [showAddDonation, setShowAddDonation] = useState<Donor | null>(null);
   const [newDonation, setNewDonation] = useState({
@@ -46,6 +47,13 @@ export default function DonorsPage() {
     description: '',
     file: null as File | null
   });
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    inserted: { id: number; donorNumber: string; fullName: string; email: string }[];
+    duplicates: { rowNumber: number; donorNumber?: string; reason: string }[];
+    errors: { rowNumber?: number; reason: string }[];
+  } | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [minTotal, setMinTotal] = useState('');
@@ -76,6 +84,7 @@ export default function DonorsPage() {
 
   const handleAddDonor = async () => {
     if (newDonor.donorNumber && newDonor.fullName && newDonor.email) {
+      setAddDonorError(null);
       try {
         const res = await fetch(`${API_URL}/donors`, {
           method: 'POST',
@@ -83,20 +92,90 @@ export default function DonorsPage() {
           body: JSON.stringify(newDonor)
         });
         const donor = await res.json();
+        if (!res.ok) {
+          setAddDonorError(donor.message || 'לא ניתן להוסיף תורם זה');
+          return;
+        }
         setDonors(prev => [...prev, { ...donor, donations: donor.donations || [] }]);
         setNewDonor({ donorNumber: '', fullName: '', email: '' });
         setShowAddDonor(false);
       } catch (err) {
         console.error('Failed to add donor', err);
+        setAddDonorError('אירעה שגיאה בעת הוספת התורם');
       }
     }
   };
 
-  const handleSendEmail = async (
+  const handleImportDonors = async (file: File) => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const content = await fileToBase64(file);
+      const res = await fetch(`${API_URL}/donors/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, content })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.inserted?.length) {
+          setDonors(prev => [
+            ...prev,
+            ...data.inserted.map((donor: any) => ({
+              ...donor,
+              donations: [],
+              totalDonations: 0
+            }))
+          ]);
+        }
+        setImportResult({
+          inserted: data.inserted || [],
+          duplicates: data.duplicates || [],
+          errors: data.errors || []
+        });
+      } else {
+        setImportResult({
+          inserted: [],
+          duplicates: [],
+          errors: [
+            {
+              reason: data.message || 'אירעה שגיאה בעת יבוא הקובץ'
+            }
+          ]
+        });
+      }
+    } catch (err) {
+      console.error('Failed to import donors', err);
+      setImportResult({
+        inserted: [],
+        duplicates: [],
+        errors: [
+          {
+            reason: 'אירעה שגיאה בעת יבוא הקובץ'
+          }
+        ]
+      });
+    } finally {
+      setImporting(false);
+      if (excelInputRef.current) {
+        excelInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleImportInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleImportDonors(file);
+    }
+  };
+
+    const handleSendEmail = async (
     donorId: string,
     donationId: string,
     senderName = SENDER_OPTIONS[0].senderName
   ) => {
+
     const donor = donors.find(d => d.id === donorId);
     const donation = donor?.donations.find(d => d.id === donationId);
     if (!donor || !donation) return;
@@ -292,6 +371,27 @@ export default function DonorsPage() {
             )}
           </button>
           <button
+            onClick={() => excelInputRef.current?.click()}
+            disabled={importing}
+            className={`bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition-colors ${importing ? 'opacity-50 cursor-not-allowed hover:bg-purple-600' : ''}`}
+          >
+            {importing ? (
+              <span>מייבא...</span>
+            ) : (
+              <>
+                <Upload className="h-5 w-5" />
+                <span>ייבוא תורמים מאקסל</span>
+              </>
+            )}
+          </button>
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            onChange={handleImportInputChange}
+            className="hidden"
+          />
+          <button
             onClick={() => setShowAddDonor(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 space-x-reverse transition-colors"
           >
@@ -301,6 +401,48 @@ export default function DonorsPage() {
         </div>
       </div>
 
+      {importResult && (
+        <div className="bg-white rounded-lg shadow p-6 space-y-4">
+          <h2 className="text-xl font-semibold text-gray-900">תוצאות יבוא</h2>
+          {importResult.inserted.length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-green-700">תורמים שנוספו</h3>
+              <ul className="list-disc pr-5 text-green-700">
+                {importResult.inserted.map(donor => (
+                  <li key={donor.id}>
+                    {donor.fullName} ({donor.donorNumber}) - {donor.email}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {importResult.duplicates.length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-yellow-700">תורמים שדולגו</h3>
+              <ul className="list-disc pr-5 text-yellow-700">
+                {importResult.duplicates.map((dup, index) => (
+                  <li key={`${dup.donorNumber || 'duplicate'}-${dup.rowNumber}-${index}`}>
+                    שורה {dup.rowNumber}: {dup.donorNumber || 'ללא מספר'} - {dup.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {importResult.errors.length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium text-red-700">שגיאות</h3>
+              <ul className="list-disc pr-5 text-red-700">
+                {importResult.errors.map((error, index) => (
+                  <li key={`${error.rowNumber || 'general'}-${index}`}>
+                    {error.rowNumber ? `שורה ${error.rowNumber}: ` : ''}{error.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Donor Modal */}
       {showAddDonor && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -308,7 +450,10 @@ export default function DonorsPage() {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">הוסף תורם חדש</h3>
               <button
-                onClick={() => setShowAddDonor(false)}
+                onClick={() => {
+                  setShowAddDonor(false);
+                  setAddDonorError(null);
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="h-5 w-5" />
@@ -354,11 +499,17 @@ export default function DonorsPage() {
                   placeholder="הכנס כתובת מייל"
                 />
               </div>
+              {addDonorError && (
+                <p className="text-sm text-red-600">{addDonorError}</p>
+              )}
             </div>
             
             <div className="flex justify-end space-x-3 space-x-reverse mt-6">
               <button
-                onClick={() => setShowAddDonor(false)}
+                onClick={() => {
+                  setShowAddDonor(false);
+                  setAddDonorError(null);
+                }}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
               >
                 ביטול
