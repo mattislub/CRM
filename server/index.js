@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { createServer } from 'http';
 import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir, readFileSync, writeFileSync } from 'fs';
-import { resolve, basename } from 'path';
+import { resolve, basename, extname } from 'path';
 import { Pool } from 'pg';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import XLSX from 'xlsx';
 
 const required = [
@@ -30,6 +30,59 @@ if (!existsSync(uploadDir)) {
 const splitDir = resolve(process.cwd(), 'server', 'split');
 if (!existsSync(splitDir)) {
   mkdirSync(splitDir, { recursive: true });
+}
+const signedDir = resolve(process.cwd(), 'server', 'signed');
+if (!existsSync(signedDir)) {
+  mkdirSync(signedDir, { recursive: true });
+}
+
+const signatureText =
+  process.env.PDF_SIGNATURE_TEXT ||
+  'חתום דיגיטלית על ידי צדקה עניי ישראל ובני ירושלים';
+
+async function signPdf(originalPath) {
+  try {
+    const pdfBytes = readFileSync(originalPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pages = pdfDoc.getPages();
+    for (const page of pages) {
+      const { width } = page.getSize();
+      const textWidth = font.widthOfTextAtSize(signatureText, 10);
+      const x = Math.max(40, width - textWidth - 40);
+      page.drawText(signatureText, {
+        x,
+        y: 40,
+        size: 10,
+        font,
+        color: rgb(0, 0, 0),
+        opacity: 0.75,
+      });
+    }
+
+    const signedBytes = await pdfDoc.save();
+    const originalName = basename(originalPath);
+    const extension = extname(originalName);
+    const baseName =
+      extension.toLowerCase() === '.pdf'
+        ? originalName.slice(0, -extension.length)
+        : originalName;
+
+    let signedFileName = `${baseName}-signed.pdf`;
+    let signedPath = resolve(signedDir, signedFileName);
+    let counter = 1;
+    while (existsSync(signedPath)) {
+      signedFileName = `${baseName}-signed-${counter}.pdf`;
+      signedPath = resolve(signedDir, signedFileName);
+      counter += 1;
+    }
+
+    writeFileSync(signedPath, signedBytes);
+    return signedPath;
+  } catch (err) {
+    console.error('Failed to sign PDF', err);
+    return originalPath;
+  }
 }
 
 async function sendEmail({ to, subject, text, html, attachments, senderName }) {
@@ -189,7 +242,8 @@ const server = createServer((req, res) => {
             filePath = resolve(splitDir, '.' + data.pdfUrl.replace('/split', ''));
           }
           if (filePath) {
-            attachments.push({ filename: basename(filePath), path: filePath });
+            const signedPath = await signPdf(filePath);
+            attachments.push({ filename: basename(signedPath), path: signedPath });
           }
         }
         await sendEmail({ ...data, attachments });
