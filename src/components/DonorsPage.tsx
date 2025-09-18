@@ -62,6 +62,128 @@ export default function DonorsPage() {
   const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('he-IL', {
+      style: 'currency',
+      currency: 'ILS'
+    }).format(amount);
+  };
+
+  const getEmailContent = (
+    senderName: typeof SENDER_OPTIONS[number]['senderName'],
+    donor: Donor,
+    donation: Donation
+  ) => {
+    const donorGreeting = donor.fullName?.trim() || 'תורם יקר';
+    const donationAmount = formatCurrency(donation.amount);
+    const donationDate = donation.date
+      ? new Date(donation.date).toLocaleDateString('he-IL')
+      : '';
+    const donationPurpose = donation.description?.trim();
+
+    const baseText = [
+      `שלום ${donorGreeting},`,
+      `תודה מעומק הלב על תרומתך בסך ${donationAmount}.`,
+      'מצורפת הקבלה עבור תרומתך המכובדת, המוכרת לפי סעיף 46.',
+    ];
+
+    if (donationPurpose) {
+      baseText.splice(2, 0, `ייעוד התרומה: ${donationPurpose}.`);
+    }
+
+    const baseHtml = (
+      blessingLine: string,
+      signature: string,
+      donationLink: string,
+      contactLine?: string
+    ) => `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charSet="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>קבלה על תרומתך</title>
+</head>
+<body style="margin:0;background-color:#f4f5f7;font-family:'Assistant','Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;color:#1f2937;">
+  <table role="presentation" width="100%" style="border-collapse:collapse;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" style="max-width:600px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 45px rgba(15,23,42,0.12);">
+          <tr>
+            <td style="padding:32px;background:linear-gradient(135deg,#22d3ee,#0f766e);color:#ffffff;">
+              <p style="margin:0;font-size:28px;font-weight:700;">${senderName}</p>
+              <p style="margin:8px 0 0;font-size:16px;font-weight:500;">קבלה על תרומתך</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              <p style="margin:0 0 16px;font-size:18px;font-weight:600;">שלום ${donorGreeting},</p>
+              <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">תודה מעומק הלב על תרומתך בסך <strong>${donationAmount}</strong>.</p>
+              ${donationPurpose ? `<p style="margin:0 0 12px;font-size:16px;line-height:1.8;">ייעוד התרומה: ${donationPurpose}.</p>` : ''}
+              <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">מצורפת הקבלה עבור תרומתך המכובדת, המוכרת לפי סעיף 46.</p>
+              <p style="margin:0 0 20px;font-size:16px;line-height:1.8;">${blessingLine}</p>
+              <div style="margin:32px 0;text-align:center;">
+                <a href="${donationLink}" style="display:inline-block;padding:14px 32px;background-color:#0f766e;color:#ffffff;border-radius:999px;text-decoration:none;font-size:16px;font-weight:700;">תרום עכשיו</a>
+              </div>
+              <div style="padding:20px;background-color:#f0fdfa;border-radius:16px;font-size:14px;line-height:1.8;">
+                <p style="margin:0 0 6px;font-weight:600;">פרטי התרומה</p>
+                <p style="margin:0;">סכום התרומה: ${donationAmount}</p>
+                ${donationDate ? `<p style="margin:0;">תאריך התרומה: ${donationDate}</p>` : ''}
+                ${donationPurpose ? `<p style="margin:0;">ייעוד התרומה: ${donationPurpose}</p>` : ''}
+              </div>
+              <p style="margin:24px 0 4px;font-size:16px;line-height:1.8;">בברכה,</p>
+              <p style="margin:0;font-size:16px;font-weight:700;">${signature}</p>
+              ${contactLine ? `<p style="margin:4px 0 0;font-size:14px;color:#6b7280;">${contactLine}</p>` : ''}
+            </td>
+          </tr>
+        </table>
+        <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">הודעה זו נשלחה אליך באופן אוטומטי, אנא אל תגיב אליה ישירות.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    if (senderName === 'צדקת עניי ארץ ישראל') {
+      const donationLink = 'https://www.matara.pro/nedarimplus/online/?mosad=7000144';
+      const blessingLine = 'בזכות הצדקה תזכו לשפע ברכה והצלחה.';
+      const signature = 'צדקת עניי ארץ ישראל';
+      const contactLine = 'טלפון: 1800-225-333';
+      const subject = 'קבלה על תרומתך - צדקת עניי ארץ ישראל';
+      const text = [
+        ...baseText,
+        blessingLine,
+        `לתרומה נוספת: ${donationLink}`,
+        'בברכה,',
+        signature,
+        contactLine
+      ].join('\n');
+
+      return {
+        subject,
+        text,
+        html: baseHtml(blessingLine, signature, donationLink, contactLine)
+      };
+    }
+
+    const donationLink = 'https://www.matara.pro/nedarimplus/online/?mosad=7000145';
+    const blessingLine = 'בזכות החזקת לומדי תורה תזכו לשפע ברכה והצלחה.';
+    const signature = 'כולל בני ירושלים';
+    const subject = 'קבלה על תרומתך - בני ירושלים';
+    const text = [
+      ...baseText,
+      blessingLine,
+      `לתרומה נוספת: ${donationLink}`,
+      'בברכה,',
+      signature
+    ].join('\n');
+
+    return {
+      subject,
+      text,
+      html: baseHtml(blessingLine, signature, donationLink)
+    };
+  };
+
 
   useEffect(() => {
     fetch(`${API_URL}/donors`)
@@ -170,27 +292,26 @@ export default function DonorsPage() {
     }
   };
 
-    const handleSendEmail = async (
+  const handleSendEmail = async (
     donorId: string,
     donationId: string,
     senderName = SENDER_OPTIONS[0].senderName
   ) => {
-
     const donor = donors.find(d => d.id === donorId);
     const donation = donor?.donations.find(d => d.id === donationId);
     if (!donor || !donation) return;
     setSendingDonationId(donationId);
     try {
+      const { subject, text, html } = getEmailContent(senderName, donor, donation);
+
       await fetch(`${API_URL}/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: donor.email,
-          subject: 'תודה על התרומה שלך',
-          text:
-            'שלום,\nמצורף הקבלה שלכם על התרומה שלכם.\nהתרומה שלכם מוכרת לפי סעיף 46.\n\nבברכה,\nצדקה עניי ישראל ובני ירושלים',
-          html:
-            '<p>שלום,</p><p>מצורף הקבלה שלכם על התרומה שלכם.</p><p>התרומה שלכם מוכרת לפי סעיף 46.</p><p>בברכה,<br/>צדקה עניי ישראל ובני ירושלים</p>',
+          subject,
+          text,
+          html,
           donationId,
           pdfUrl: donation.pdfUrl,
           senderName
@@ -325,29 +446,22 @@ export default function DonorsPage() {
     donor.donations.some(donation => !donation.emailSent)
   );
 
-  const filteredDonors = donors.filter(donor => {
-    const term = searchTerm.toLowerCase();
-    if (term) {
-      const matches =
-        donor.fullName.toLowerCase().includes(term) ||
-        donor.email.toLowerCase().includes(term) ||
-        donor.donorNumber.toLowerCase().includes(term);
-      if (!matches) return false;
-    }
-    if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
-    if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
-    if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
-    return true;
-  });
+    const filteredDonors = donors.filter(donor => {
+      const term = searchTerm.toLowerCase();
+      if (term) {
+        const matches =
+          donor.fullName.toLowerCase().includes(term) ||
+          donor.email.toLowerCase().includes(term) ||
+          donor.donorNumber.toLowerCase().includes(term);
+        if (!matches) return false;
+      }
+      if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
+      if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
+      if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
+      return true;
+    });
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('he-IL', {
-      style: 'currency',
-      currency: 'ILS'
-    }).format(amount);
-  };
-
-  return (
+    return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
