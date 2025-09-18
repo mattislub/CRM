@@ -136,7 +136,7 @@ export default function DonorsPage() {
               <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">מצורפת הקבלה עבור תרומתך המכובדת, המוכרת לפי סעיף 46.</p>
               <p style="margin:0 0 20px;font-size:16px;line-height:1.8;">${blessingLine}</p>
               <div style="margin:32px 0;text-align:center;">
-                <a href="${donationLink}" style="display:inline-block;padding:14px 32px;background-color:#0f766e;color:#ffffff;border-radius:999px;text-decoration:none;font-size:16px;font-weight:700;">תרום עכשיו</a>
+                <a href="${donationLink}" style="display:inline-block;padding:14px 32px;background-color:#0f766e;color:#ffffff;border-radius:999px;text-decoration:none;font-size:16px;font-weight:700;">לתרומות</a>
               </div>
               <div style="padding:20px;background-color:#f0fdfa;border-radius:16px;font-size:14px;line-height:1.8;">
                 <p style="margin:0 0 6px;font-weight:600;">פרטי התרומה</p>
