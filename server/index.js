@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { createServer } from 'http';
 import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir, readFileSync, writeFileSync } from 'fs';
-import { resolve, basename } from 'path';
+import { resolve, basename, extname } from 'path';
 import { Pool } from 'pg';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import XLSX from 'xlsx';
 
 const required = [
@@ -30,6 +30,59 @@ if (!existsSync(uploadDir)) {
 const splitDir = resolve(process.cwd(), 'server', 'split');
 if (!existsSync(splitDir)) {
   mkdirSync(splitDir, { recursive: true });
+}
+const signedDir = resolve(process.cwd(), 'server', 'signed');
+if (!existsSync(signedDir)) {
+  mkdirSync(signedDir, { recursive: true });
+}
+
+const signatureText =
+  process.env.PDF_SIGNATURE_TEXT ||
+  'חתום דיגיטלית על ידי צדקה עניי ישראל ובני ירושלים';
+
+async function signPdf(originalPath) {
+  try {
+    const pdfBytes = readFileSync(originalPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pages = pdfDoc.getPages();
+    for (const page of pages) {
+      const { width } = page.getSize();
+      const textWidth = font.widthOfTextAtSize(signatureText, 10);
+      const x = Math.max(40, width - textWidth - 40);
+      page.drawText(signatureText, {
+        x,
+        y: 40,
+        size: 10,
+        font,
+        color: rgb(0, 0, 0),
+        opacity: 0.75,
+      });
+    }
+
+    const signedBytes = await pdfDoc.save();
+    const originalName = basename(originalPath);
+    const extension = extname(originalName);
+    const baseName =
+      extension.toLowerCase() === '.pdf'
+        ? originalName.slice(0, -extension.length)
+        : originalName;
+
+    let signedFileName = `${baseName}-signed.pdf`;
+    let signedPath = resolve(signedDir, signedFileName);
+    let counter = 1;
+    while (existsSync(signedPath)) {
+      signedFileName = `${baseName}-signed-${counter}.pdf`;
+      signedPath = resolve(signedDir, signedFileName);
+      counter += 1;
+    }
+
+    writeFileSync(signedPath, signedBytes);
+    return signedPath;
+  } catch (err) {
+    console.error('Failed to sign PDF', err);
+    return originalPath;
+  }
 }
 
 async function sendEmail({ to, subject, text, html, attachments, senderName }) {
@@ -141,7 +194,7 @@ pool
 const server = createServer((req, res) => {
   // Allow CORS so the front-end can access the API when served statically
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -189,7 +242,8 @@ const server = createServer((req, res) => {
             filePath = resolve(splitDir, '.' + data.pdfUrl.replace('/split', ''));
           }
           if (filePath) {
-            attachments.push({ filename: basename(filePath), path: filePath });
+            const signedPath = await signPdf(filePath);
+            attachments.push({ filename: basename(signedPath), path: signedPath });
           }
         }
         await sendEmail({ ...data, attachments });
@@ -334,6 +388,73 @@ const server = createServer((req, res) => {
           })
           .catch(err => {
             console.error('Failed to add donation', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false }));
+          });
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+  } else if (req.url?.startsWith('/donations/') && req.method === 'PUT') {
+    const match = req.url.match(/^\/donations\/(\d+)$/);
+    if (!match) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Donation not found' }));
+      return;
+    }
+    const donationId = parseInt(match[1], 10);
+    if (Number.isNaN(donationId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false }));
+      return;
+    }
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        pool
+          .query(
+            `UPDATE donations
+             SET amount = $1,
+                 donation_date = $2,
+                 description = $3,
+                 pdf_url = $4
+             WHERE id = $5
+             RETURNING id, donor_id, amount, donation_date, description, pdf_url, email_sent, sent_date`,
+            [
+              data.amount,
+              data.date,
+              data.description,
+              data.pdfUrl || null,
+              donationId,
+            ]
+          )
+          .then(result => {
+            if (result.rowCount === 0) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Donation not found' }));
+              return;
+            }
+            const updated = result.rows[0];
+            const donation = {
+              id: updated.id,
+              donorId: updated.donor_id,
+              amount: parseFloat(updated.amount),
+              date: updated.donation_date,
+              description: updated.description,
+              pdfUrl: updated.pdf_url,
+              emailSent: updated.email_sent,
+              sentDate: updated.sent_date,
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(donation));
+          })
+          .catch(err => {
+            console.error('Failed to update donation', err);
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false }));
           });
