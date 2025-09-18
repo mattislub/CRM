@@ -141,7 +141,7 @@ pool
 const server = createServer((req, res) => {
   // Allow CORS so the front-end can access the API when served statically
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -334,6 +334,73 @@ const server = createServer((req, res) => {
           })
           .catch(err => {
             console.error('Failed to add donation', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false }));
+          });
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
+  } else if (req.url?.startsWith('/donations/') && req.method === 'PUT') {
+    const match = req.url.match(/^\/donations\/(\d+)$/);
+    if (!match) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Donation not found' }));
+      return;
+    }
+    const donationId = parseInt(match[1], 10);
+    if (Number.isNaN(donationId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false }));
+      return;
+    }
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        pool
+          .query(
+            `UPDATE donations
+             SET amount = $1,
+                 donation_date = $2,
+                 description = $3,
+                 pdf_url = $4
+             WHERE id = $5
+             RETURNING id, donor_id, amount, donation_date, description, pdf_url, email_sent, sent_date`,
+            [
+              data.amount,
+              data.date,
+              data.description,
+              data.pdfUrl || null,
+              donationId,
+            ]
+          )
+          .then(result => {
+            if (result.rowCount === 0) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Donation not found' }));
+              return;
+            }
+            const updated = result.rows[0];
+            const donation = {
+              id: updated.id,
+              donorId: updated.donor_id,
+              amount: parseFloat(updated.amount),
+              date: updated.donation_date,
+              description: updated.description,
+              pdfUrl: updated.pdf_url,
+              emailSent: updated.email_sent,
+              sentDate: updated.sent_date,
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(donation));
+          })
+          .catch(err => {
+            console.error('Failed to update donation', err);
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false }));
           });
