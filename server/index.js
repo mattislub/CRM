@@ -351,6 +351,84 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ success: false }));
       }
     });
+  } else if (req.url?.startsWith('/donors/') && req.method === 'PUT') {
+    const match = req.url.match(/^\/donors\/(\d+)$/);
+    if (!match) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Donor not found' }));
+      return;
+    }
+    const donorId = parseInt(match[1], 10);
+    if (Number.isNaN(donorId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false }));
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        if (!data.donorNumber || !data.fullName || !data.email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Missing required fields' }));
+          return;
+        }
+
+        pool
+          .query('SELECT id FROM donors WHERE donor_number = $1 AND id <> $2', [data.donorNumber, donorId])
+          .then(existing => {
+            if (existing.rowCount > 0) {
+              res.writeHead(409, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  message: 'Donor with this donor number already exists',
+                })
+              );
+              return;
+            }
+
+            return pool
+              .query(
+                `UPDATE donors
+                 SET donor_number = $1,
+                     full_name = $2,
+                     email = $3
+                 WHERE id = $4
+                 RETURNING id, donor_number, full_name, email`,
+                [data.donorNumber, data.fullName, data.email, donorId]
+              )
+              .then(result => {
+                if (result.rowCount === 0) {
+                  res.writeHead(404, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({ success: false, message: 'Donor not found' }));
+                  return;
+                }
+
+                const donor = {
+                  id: result.rows[0].id,
+                  donorNumber: result.rows[0].donor_number,
+                  fullName: result.rows[0].full_name,
+                  email: result.rows[0].email,
+                };
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(donor));
+              });
+          })
+          .catch(err => {
+            console.error('Failed to update donor', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false }));
+          });
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      }
+    });
   } else if (req.url === '/donations' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {

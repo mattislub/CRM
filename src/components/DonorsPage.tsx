@@ -44,6 +44,13 @@ export default function DonorsPage() {
     email: ''
   });
   const [addDonorError, setAddDonorError] = useState<string | null>(null);
+  const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
+  const [editDonorData, setEditDonorData] = useState({
+    donorNumber: '',
+    fullName: '',
+    email: ''
+  });
+  const [editDonorError, setEditDonorError] = useState<string | null>(null);
 
   const [showAddDonation, setShowAddDonation] = useState<Donor | null>(null);
   const [newDonation, setNewDonation] = useState({
@@ -295,6 +302,63 @@ export default function DonorsPage() {
         console.error('Failed to add donor', err);
         setAddDonorError('אירעה שגיאה בעת הוספת התורם');
       }
+    }
+  };
+
+  const openEditDonor = (donor: Donor) => {
+    setEditingDonor(donor);
+    setEditDonorData({
+      donorNumber: donor.donorNumber || '',
+      fullName: donor.fullName || '',
+      email: donor.email || ''
+    });
+    setEditDonorError(null);
+  };
+
+  const handleUpdateDonor = async () => {
+    if (!editingDonor) return;
+    if (!editDonorData.donorNumber || !editDonorData.fullName || !editDonorData.email) {
+      setEditDonorError('נא למלא את כל השדות');
+      return;
+    }
+    setEditDonorError(null);
+    try {
+      const res = await fetch(`${API_URL}/donors/${editingDonor.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editDonorData)
+      });
+      const updatedDonor = await res.json();
+      if (!res.ok) {
+        setEditDonorError(updatedDonor.message || 'לא ניתן לעדכן את התורם הזה');
+        return;
+      }
+      setDonors(prev =>
+        prev.map(donor =>
+          donor.id === editingDonor.id
+            ? {
+                ...donor,
+                donorNumber: updatedDonor.donorNumber,
+                fullName: updatedDonor.fullName,
+                email: updatedDonor.email
+              }
+            : donor
+        )
+      );
+      setSelectedDonor(prev =>
+        prev && prev.id === editingDonor.id
+          ? {
+              ...prev,
+              donorNumber: updatedDonor.donorNumber,
+              fullName: updatedDonor.fullName,
+              email: updatedDonor.email
+            }
+          : prev
+      );
+      setEditingDonor(null);
+    } catch (err) {
+      console.error('Failed to update donor', err);
+      setEditDonorError('אירעה שגיאה בעת עדכון התורם');
     }
   };
 
@@ -920,6 +984,82 @@ export default function DonorsPage() {
         </div>
       )}
 
+      {editingDonor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">עריכת תורם</h3>
+              <button
+                onClick={() => setEditingDonor(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  מספר תורם
+                </label>
+                <input
+                  type="text"
+                  value={editDonorData.donorNumber}
+                  onChange={(e) => setEditDonorData(prev => ({ ...prev, donorNumber: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס מספר תורם"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  שם מלא
+                </label>
+                <input
+                  type="text"
+                  value={editDonorData.fullName}
+                  onChange={(e) => setEditDonorData(prev => ({ ...prev, fullName: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס שם מלא"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  כתובת מייל
+                </label>
+                <input
+                  type="email"
+                  value={editDonorData.email}
+                  onChange={(e) => setEditDonorData(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס כתובת מייל"
+                />
+              </div>
+
+              {editDonorError && (
+                <p className="text-sm text-red-600">{editDonorError}</p>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 space-x-reverse mt-6">
+              <button
+                onClick={() => setEditingDonor(null)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={handleUpdateDonor}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              >
+                שמור שינויים
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Donation Modal */}
       {editDonation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1155,6 +1295,13 @@ export default function DonorsPage() {
                 </div>
                 
                 <div className="flex items-center space-x-3 space-x-reverse">
+                  <button
+                    onClick={() => openEditDonor(donor)}
+                    className="flex items-center space-x-2 space-x-reverse px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    <span>ערוך תורם</span>
+                  </button>
                   <button
                     onClick={() => setSelectedDonor(selectedDonor?.id === donor.id ? null : donor)}
                     className="flex items-center space-x-2 space-x-reverse px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
