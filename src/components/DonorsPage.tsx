@@ -28,6 +28,7 @@ export default function DonorsPage() {
     { senderName: 'צדקת עניי ארץ ישראל', label: 'שלח מייל בשם צדקת עניי ארץ ישראל' },
     { senderName: 'בני ירושלים', label: 'שלח מייל בשם בני ירושלים' }
   ] as const;
+  type SenderOption = (typeof SENDER_OPTIONS)[number]['senderName'];
 
   const [donors, setDonors] = useState<Donor[]>([]);
 
@@ -61,6 +62,19 @@ export default function DonorsPage() {
   const [onlyPending, setOnlyPending] = useState(false);
   const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
+  const [selectedSenders, setSelectedSenders] = useState<Record<string, SenderOption>>({});
+
+  useEffect(() => {
+    setSelectedSenders(prev => {
+      const updatedSelections: Record<string, SenderOption> = {};
+      donors.forEach(donor => {
+        donor.donations.forEach(donation => {
+          updatedSelections[donation.id] = prev[donation.id] || SENDER_OPTIONS[0].senderName;
+        });
+      });
+      return updatedSelections;
+    });
+  }, [donors]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('he-IL', {
@@ -295,7 +309,7 @@ export default function DonorsPage() {
   const handleSendEmail = async (
     donorId: string,
     donationId: string,
-    senderName = SENDER_OPTIONS[0].senderName
+    senderName: SenderOption = SENDER_OPTIONS[0].senderName
   ) => {
     const donor = donors.find(d => d.id === donorId);
     const donation = donor?.donations.find(d => d.id === donationId);
@@ -344,7 +358,8 @@ export default function DonorsPage() {
       for (const donor of donors) {
         for (const donation of donor.donations) {
           if (!donation.emailSent) {
-            await handleSendEmail(donor.id, donation.id, SENDER_OPTIONS[0].senderName);
+            const selectedSender = selectedSenders[donation.id] || SENDER_OPTIONS[0].senderName;
+            await handleSendEmail(donor.id, donation.id, selectedSender);
           }
         }
       }
@@ -419,25 +434,43 @@ export default function DonorsPage() {
 
   const renderSendButton = (donation: Donation, donorId: string) => {
     const isSending = sendingDonationId === donation.id;
+    const selectedSender = selectedSenders[donation.id] || SENDER_OPTIONS[0].senderName;
     return (
       <div className="flex flex-col space-y-2">
-        {SENDER_OPTIONS.map(option => (
-          <button
-            key={option.senderName}
-            onClick={() => handleSendEmail(donorId, donation.id, option.senderName)}
-            disabled={isSending}
-            className={`bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse transition active:scale-95 ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {isSending ? (
-              <span>מעבד...</span>
-            ) : (
-              <>
-                <Send className="h-3 w-3" />
-                <span>{option.label}</span>
-              </>
-            )}
-          </button>
-        ))}
+        <label className="text-xs text-gray-600" htmlFor={`sender-select-${donation.id}`}>
+          בחר שולח
+        </label>
+        <select
+          id={`sender-select-${donation.id}`}
+          value={selectedSender}
+          onChange={(event) =>
+            setSelectedSenders(prev => ({
+              ...prev,
+              [donation.id]: event.target.value as SenderOption
+            }))
+          }
+          className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {SENDER_OPTIONS.map(option => (
+            <option key={option.senderName} value={option.senderName}>
+              {option.senderName}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => handleSendEmail(donorId, donation.id, selectedSender)}
+          disabled={isSending}
+          className={`bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center space-x-1 space-x-reverse justify-center transition active:scale-95 ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {isSending ? (
+            <span>מעבד...</span>
+          ) : (
+            <>
+              <Send className="h-3 w-3" />
+              <span>שלח קבלה</span>
+            </>
+          )}
+        </button>
       </div>
     );
   };
