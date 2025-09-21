@@ -23,10 +23,6 @@ interface DonationRecord {
   id: string;
   donorId: number | null;
   donorNumber: string;
-
-import React, { useMemo, useState } from 'react';
-import { Mail, Pencil, Search, Filter, Calendar, HandCoins } from 'lucide-react';
-
   donorName: string;
   donorEmail: string;
   amount: number;
@@ -35,7 +31,7 @@ import { Mail, Pencil, Search, Filter, Calendar, HandCoins } from 'lucide-react'
   status: DonationStatus;
   emailSent: boolean;
   pdfUrl?: string;
-
+}
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('he-IL', {
