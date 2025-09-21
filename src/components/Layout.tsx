@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Upload, Home, Users, FileText } from 'lucide-react';
+import { Upload, Home, Users, FileText, HandCoins } from 'lucide-react';
 
 // Use an environment variable so the health check works even when the app is served statically
 const API_URL = import.meta.env.VITE_API_URL;
@@ -76,6 +76,18 @@ export default function Layout({ children }: LayoutProps) {
                 >
                   <Users className="h-4 w-4" />
                   <span>תורמים</span>
+                </Link>
+
+                <Link
+                  to="/donations"
+                  className={`flex items-center space-x-2 space-x-reverse px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive('/donations')
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <HandCoins className="h-4 w-4" />
+                  <span>תרומות</span>
                 </Link>
               </div>
             </div>
