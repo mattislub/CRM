@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Mail, Pencil, Search, Filter, Calendar, HandCoins } from 'lucide-react';
+import { Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -70,6 +70,7 @@ export default function DonationsPage() {
   const [donations, setDonations] = useState<DonationRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +127,33 @@ export default function DonationsPage() {
     () => donations.reduce((sum, donation) => sum + (Number.isFinite(donation.amount) ? donation.amount : 0), 0),
     [donations]
   );
+
+  const handleDeleteDonation = async (donationId: string) => {
+    const confirmed = window.confirm('האם אתם בטוחים שברצונכם למחוק את התרומה?');
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(donationId);
+
+    try {
+      const response = await fetch(`${API_URL}/donations/${donationId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete donation');
+      }
+
+      setDonations(prevDonations => prevDonations.filter(donation => donation.id !== donationId));
+      setError(null);
+    } catch (err) {
+      console.error('Failed to delete donation', err);
+      setError('אירעה שגיאה במחיקת התרומה. נסו שוב מאוחר יותר.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -270,6 +298,13 @@ export default function DonationsPage() {
                         </button>
                         <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors">
                           <Mail className="h-4 w-4" /> שלח מייל
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDonation(donation.id)}
+                          disabled={deletingId === donation.id}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-full transition-colors"
+                        >
+                          <Trash className="h-4 w-4" /> {deletingId === donation.id ? 'מוחק...' : 'מחק'}
                         </button>
                       </div>
                     </td>
