@@ -19,6 +19,19 @@ export interface Donation {
   sentDate?: Date;
 }
 
+export type DonorNameEntry =
+  | string
+  | {
+      id?: string | number;
+      name: string;
+      relation?: string;
+      notes?: string;
+      hebrewDate?: string;
+      gregorianDate?: string;
+      date?: string;
+      createdAt?: string;
+    };
+
 export interface Donor {
   id: string;
   donorNumber: string;
@@ -26,4 +39,6 @@ export interface Donor {
   email: string;
   donations: Donation[];
   totalDonations: number;
+  prayerNames?: DonorNameEntry[];
+  yahrzeitNames?: DonorNameEntry[];
 }
