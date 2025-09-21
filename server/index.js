@@ -194,7 +194,7 @@ pool
 const server = createServer((req, res) => {
   // Allow CORS so the front-end can access the API when served statically
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -581,6 +581,38 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ success: false }));
       }
     });
+  } else if (req.url?.startsWith('/donations/') && req.method === 'DELETE') {
+    const match = req.url.match(/^\/donations\/(\d+)$/);
+    if (!match) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Donation not found' }));
+      return;
+    }
+
+    const donationId = parseInt(match[1], 10);
+    if (Number.isNaN(donationId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false }));
+      return;
+    }
+
+    pool
+      .query('DELETE FROM donations WHERE id = $1 RETURNING id', [donationId])
+      .then(result => {
+        if (result.rowCount === 0) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Donation not found' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      })
+      .catch(err => {
+        console.error('Failed to delete donation', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      });
   } else if (req.url === '/pdfs' && req.method === 'GET') {
     readdir(uploadDir, async (err, files) => {
       if (err) {
