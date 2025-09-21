@@ -1,15 +1,41 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Mail, Pencil, Search, Filter, Calendar, HandCoins } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+type DonationStatus = 'התקבל' | 'ממתין' | 'נשלח';
+
+interface ApiDonationRecord {
+  id: number;
+  donorId: number | null;
+  donorNumber: string | null;
+  donorName: string | null;
+  donorEmail: string | null;
+  amount: number;
+  donationDate: string | null;
+  description: string | null;
+  pdfUrl: string | null;
+  emailSent: boolean;
+  sentDate: string | null;
+}
 
 interface DonationRecord {
   id: string;
+  donorId: number | null;
+  donorNumber: string;
+
+import React, { useMemo, useState } from 'react';
+import { Mail, Pencil, Search, Filter, Calendar, HandCoins } from 'lucide-react';
+
   donorName: string;
   donorEmail: string;
   amount: number;
   purpose: string;
   date: string;
-  status: 'התקבל' | 'ממתין' | 'נשלח';
-}
+  status: DonationStatus;
+  emailSent: boolean;
+  pdfUrl?: string;
+
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('he-IL', {
@@ -18,71 +44,92 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0
   }).format(amount);
 
+const determineStatus = (donation: ApiDonationRecord): DonationStatus => {
+  if (donation.emailSent) {
+    return 'נשלח';
+  }
+  if (donation.pdfUrl) {
+    return 'ממתין';
+  }
+  return 'התקבל';
+};
+
+const toDonationRecord = (donation: ApiDonationRecord): DonationRecord => ({
+  id: donation.id.toString(),
+  donorId: donation.donorId,
+  donorNumber: donation.donorNumber || '—',
+  donorName: donation.donorName || 'תורם לא ידוע',
+  donorEmail: donation.donorEmail || '',
+  amount: donation.amount ?? 0,
+  purpose: donation.description || '',
+  date: donation.donationDate || '',
+  status: determineStatus(donation),
+  emailSent: donation.emailSent,
+  pdfUrl: donation.pdfUrl || undefined
+});
+
 export default function DonationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | DonationRecord['status']>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | DonationStatus>('all');
+  const [donations, setDonations] = useState<DonationRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const donations = useMemo<DonationRecord[]>(
-    () => [
-      {
-        id: '1',
-        donorName: 'שרה לוי',
-        donorEmail: 'sara@example.com',
-        amount: 500,
-        purpose: 'סיוע למשפחות',
-        date: '2024-02-12',
-        status: 'התקבל'
-      },
-      {
-        id: '2',
-        donorName: 'יוסף כהן',
-        donorEmail: 'yosef@example.com',
-        amount: 1200,
-        purpose: 'פרויקט ילדים',
-        date: '2024-02-10',
-        status: 'נשלח'
-      },
-      {
-        id: '3',
-        donorName: 'משה גרין',
-        donorEmail: 'moshe@example.com',
-        amount: 750,
-        purpose: 'הנצחה',
-        date: '2024-02-05',
-        status: 'ממתין'
-      },
-      {
-        id: '4',
-        donorName: 'אסתר בלום',
-        donorEmail: 'ester@example.com',
-        amount: 300,
-        purpose: 'סיוע לנזקקים',
-        date: '2024-01-30',
-        status: 'התקבל'
-      },
-      {
-        id: '5',
-        donorName: 'דוד רוזן',
-        donorEmail: 'david@example.com',
-        amount: 950,
-        purpose: 'קמפיין סוף שנה',
-        date: '2024-01-28',
-        status: 'ממתין'
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchDonations = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`${API_URL}/donations`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch donations');
+        }
+        const data: ApiDonationRecord[] = await response.json();
+        if (!cancelled) {
+          setDonations(data.map(toDonationRecord));
+        }
+      } catch (err) {
+        console.error('Failed to load donations', err);
+        if (!cancelled) {
+          setError('אירעה שגיאה בטעינת התרומות מהשרת. נסו שוב מאוחר יותר.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    ],
-    []
+    };
+
+    fetchDonations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredDonations = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return donations.filter(donation => {
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        donation.donorName.toLowerCase().includes(normalizedSearch) ||
+        donation.donorEmail.toLowerCase().includes(normalizedSearch) ||
+        donation.purpose.toLowerCase().includes(normalizedSearch) ||
+        donation.donorNumber.toLowerCase().includes(normalizedSearch);
+
+      const matchesStatus = statusFilter === 'all' || donation.status === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [donations, searchTerm, statusFilter]);
+
+  const totalAmount = useMemo(
+    () => donations.reduce((sum, donation) => sum + (Number.isFinite(donation.amount) ? donation.amount : 0), 0),
+    [donations]
   );
-
-  const filteredDonations = donations.filter(donation => {
-    const matchesSearch =
-      donation.donorName.includes(searchTerm) ||
-      donation.donorEmail.includes(searchTerm) ||
-      donation.purpose.includes(searchTerm);
-
-    const matchesStatus = statusFilter === 'all' || donation.status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
 
   return (
     <div className="space-y-6">
@@ -97,9 +144,8 @@ export default function DonationsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">סה"כ תרומות</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {formatCurrency(donations.reduce((sum, donation) => sum + donation.amount, 0))}
-                </p>
+                <p className="text-2xl font-semibold text-gray-900">{formatCurrency(totalAmount)}</p>
+
               </div>
               <div className="bg-blue-50 text-blue-600 p-3 rounded-full">
                 <HandCoins className="h-6 w-6" />
@@ -112,7 +158,9 @@ export default function DonationsPage() {
               <div>
                 <p className="text-sm text-gray-500">תרומות שממתינות לשליחה</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {filteredDonations.filter(donation => donation.status === 'ממתין').length}
+                  {donations.filter(donation => donation.status === 'ממתין').length}
+
+
                 </p>
               </div>
               <div className="bg-amber-50 text-amber-600 p-3 rounded-full">
@@ -183,50 +231,67 @@ export default function DonationsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {filteredDonations.map(donation => (
-                <tr key={donation.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {donation.donorName}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.donorEmail}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(donation.date).toLocaleDateString('he-IL')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.purpose}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                    {formatCurrency(donation.amount)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                        donation.status === 'התקבל'
-                          ? 'bg-green-50 text-green-700'
-                          : donation.status === 'נשלח'
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-amber-50 text-amber-700'
-                      }`}
-                    >
-                      {donation.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-2">
-                      <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors">
-                        <Pencil className="h-4 w-4" /> ערוך
-                      </button>
-                      <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors">
-                        <Mail className="h-4 w-4" /> שלח מייל
-                      </button>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">
+                    טוען נתוני תרומות...
                   </td>
                 </tr>
-              ))}
+              ) : filteredDonations.length > 0 ? (
+                filteredDonations.map(donation => (
+                  <tr key={donation.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <div className="flex flex-col">
+                        <span>{donation.donorName}</span>
+                        <span className="text-xs text-gray-400">מספר תורם: {donation.donorNumber}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.donorEmail || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {donation.date ? new Date(donation.date).toLocaleDateString('he-IL') : '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.purpose || '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                      {formatCurrency(donation.amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                          donation.status === 'התקבל'
+                            ? 'bg-green-50 text-green-700'
+                            : donation.status === 'נשלח'
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {donation.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2">
+                        <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors">
+                          <Pencil className="h-4 w-4" /> ערוך
+                        </button>
+                        <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors">
+                          <Mail className="h-4 w-4" /> שלח מייל
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">
+                    לא נמצאו תרומות התואמות לחיפוש.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+        {error && (
+          <div className="px-6 pb-6 text-sm text-red-600">{error}</div>
 
-        {filteredDonations.length === 0 && (
-          <div className="p-12 text-center text-gray-500 text-sm">לא נמצאו תרומות התואמות לחיפוש.</div>
         )}
       </div>
     </div>

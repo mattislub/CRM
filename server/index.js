@@ -429,6 +429,46 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ success: false }));
       }
     });
+  } else if (req.url === '/donations' && req.method === 'GET') {
+    pool
+      .query(
+        `SELECT dn.id,
+                dn.donor_id,
+                dn.amount,
+                dn.donation_date,
+                dn.description,
+                dn.pdf_url,
+                dn.email_sent,
+                dn.sent_date,
+                d.donor_number,
+                d.full_name,
+                d.email
+           FROM donations dn
+           LEFT JOIN donors d ON dn.donor_id = d.id
+          ORDER BY dn.donation_date DESC NULLS LAST, dn.id DESC`
+      )
+      .then(result => {
+        const donations = result.rows.map(row => ({
+          id: row.id,
+          donorId: row.donor_id,
+          donorNumber: row.donor_number,
+          donorName: row.full_name,
+          donorEmail: row.email,
+          amount: row.amount != null ? parseFloat(row.amount) : 0,
+          donationDate: row.donation_date,
+          description: row.description,
+          pdfUrl: row.pdf_url,
+          emailSent: row.email_sent,
+          sentDate: row.sent_date,
+        }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(donations));
+      })
+      .catch(err => {
+        console.error('Failed to fetch donations', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false }));
+      });
   } else if (req.url === '/donations' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
