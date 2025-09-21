@@ -18,6 +18,19 @@ interface Donation {
   sentHebrewDate?: string;
 }
 
+type DonorNameEntry =
+  | string
+  | {
+      id?: string | number;
+      name: string;
+      relation?: string;
+      notes?: string;
+      hebrewDate?: string;
+      gregorianDate?: string;
+      date?: string;
+      createdAt?: string;
+    };
+
 interface Donor {
   id: string;
   donorNumber: string;
@@ -25,6 +38,8 @@ interface Donor {
   email: string;
   donations: Donation[];
   totalDonations: number;
+  prayerNames?: DonorNameEntry[];
+  yahrzeitNames?: DonorNameEntry[];
 }
 
 export default function DonorsPage() {
@@ -88,6 +103,19 @@ export default function DonorsPage() {
   const [sendingDonationId, setSendingDonationId] = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedSenders, setSelectedSenders] = useState<Record<string, SenderOption>>({});
+  const [activeDonorTab, setActiveDonorTab] = useState<'details' | 'donations' | 'prayer' | 'yahrzeit'>('details');
+
+  const isNameObject = (entry: DonorNameEntry): entry is Exclude<DonorNameEntry, string> =>
+    typeof entry === 'object' && entry !== null;
+
+  const formatDateString = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+    return date.toLocaleDateString('he-IL');
+  };
 
   const formatHebrewDate = (dateInput: Date | string | undefined | null) => {
     if (!dateInput) return '';
@@ -135,6 +163,10 @@ export default function DonorsPage() {
       return updatedSelections;
     });
   }, [donors]);
+
+  useEffect(() => {
+    setActiveDonorTab('details');
+  }, [selectedDonor?.id]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('he-IL', {
@@ -272,7 +304,9 @@ export default function DonorsPage() {
       .then(data => {
         const loaded = data.map((d: any) => ({
           ...d,
-          donations: d.donations.map((dn: any) => createDonation(dn))
+          donations: Array.isArray(d.donations) ? d.donations.map((dn: any) => createDonation(dn)) : [],
+          prayerNames: Array.isArray(d.prayerNames) ? d.prayerNames : [],
+          yahrzeitNames: Array.isArray(d.yahrzeitNames) ? d.yahrzeitNames : [],
         }));
         setDonors(loaded);
       })
@@ -295,7 +329,15 @@ export default function DonorsPage() {
           setAddDonorError(donor.message || 'לא ניתן להוסיף תורם זה');
           return;
         }
-        setDonors(prev => [...prev, { ...donor, donations: donor.donations || [] }]);
+        setDonors(prev => [
+          ...prev,
+          {
+            ...donor,
+            donations: donor.donations || [],
+            prayerNames: Array.isArray(donor.prayerNames) ? donor.prayerNames : [],
+            yahrzeitNames: Array.isArray(donor.yahrzeitNames) ? donor.yahrzeitNames : [],
+          },
+        ]);
         setNewDonor({ donorNumber: '', fullName: '', email: '' });
         setShowAddDonor(false);
       } catch (err) {
@@ -380,7 +422,9 @@ export default function DonorsPage() {
             ...data.inserted.map((donor: any) => ({
               ...donor,
               donations: [],
-              totalDonations: 0
+              totalDonations: 0,
+              prayerNames: Array.isArray(donor.prayerNames) ? donor.prayerNames : [],
+              yahrzeitNames: Array.isArray(donor.yahrzeitNames) ? donor.yahrzeitNames : [],
             }))
           ]);
         }
@@ -1266,131 +1310,304 @@ export default function DonorsPage() {
         </div>
 
         <div className="divide-y divide-gray-200">
-          {filteredDonors.map((donor) => (
-            <div key={donor.id} className="px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4 space-x-reverse">
-                  <div className="bg-blue-100 rounded-full p-3">
-                    <Users className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">{donor.fullName}</h4>
-                    <div className="flex items-center space-x-4 space-x-reverse text-sm text-gray-500">
-                      <span>מספר תורם: {donor.donorNumber}</span>
-                      <span className="flex items-center space-x-1 space-x-reverse">
-                        <Mail className="h-4 w-4" />
-                        <span>{donor.email}</span>
-                      </span>
+          {filteredDonors.map((donor) => {
+            const prayerNames = Array.isArray(donor.prayerNames) ? donor.prayerNames : [];
+            const yahrzeitNames = Array.isArray(donor.yahrzeitNames) ? donor.yahrzeitNames : [];
+            const donorTabs: { id: 'details' | 'donations' | 'prayer' | 'yahrzeit'; label: string }[] = [
+              { id: 'details', label: 'פרטי תורם' },
+              { id: 'donations', label: `רשימת תרומות (${donor.donations.length})` },
+              { id: 'prayer', label: `רשימת שמות לתפילה (${prayerNames.length})` },
+              { id: 'yahrzeit', label: `רשימת שמות ליארצייט (${yahrzeitNames.length})` },
+            ];
+
+            const pendingEmails = donor.donations.filter(donation => !donation.emailSent).length;
+
+            return (
+              <div key={donor.id} className="px-6 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4 space-x-reverse">
+                    <div className="bg-blue-100 rounded-full p-3">
+                      <Users className="h-6 w-6 text-blue-600" />
                     </div>
-                    <div className="text-sm text-gray-600 mt-1">
-                      סה"כ תרומות: {formatCurrency(donor.totalDonations)} | 
-                      {donor.donations.length} תרומות
-                      {donor.donations.filter(d => !d.emailSent).length > 0 && (
-                        <span className="text-orange-600 mr-2">
-                          | {donor.donations.filter(d => !d.emailSent).length} ממתינות לשליחה
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3 space-x-reverse">
-                  <button
-                    onClick={() => openEditDonor(donor)}
-                    className="flex items-center space-x-2 space-x-reverse px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    <span>ערוך תורם</span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedDonor(selectedDonor?.id === donor.id ? null : donor)}
-                    className="flex items-center space-x-2 space-x-reverse px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    <Eye className="h-4 w-4" />
-                    <span>צפה בתרומות</span>
-                  </button>
-                </div>
-              </div>
-              
-              {selectedDonor?.id === donor.id && (
-                <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h5 className="font-medium text-gray-900">תרומות של {donor.fullName}</h5>
-                    <button
-                      onClick={() => setShowAddDonation(donor)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-                    >
-                      הוסף תרומה
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {donor.donations.map((donation) => (
-                      <div key={donation.id} className="bg-white rounded-lg p-4 flex items-center justify-between">
-                        <div className="flex items-center space-x-3 space-x-reverse">
-                          <FileText className="h-5 w-5 text-gray-400" />
-                          <div>
-                            <div className="font-medium text-gray-900">
-                              {formatCurrency(donation.amount)}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {donation.date.toLocaleDateString('he-IL')}
-                              {donation.hebrewDate ? ` | ${donation.hebrewDate}` : ''}
-                              {' | '}
-                              {donation.description}
-                            </div>
-                            {donation.emailSent && donation.sentDate && (
-                      <div className="text-xs text-green-600 flex items-center space-x-1 space-x-reverse mt-1">
-                        <CheckCircle className="h-3 w-3" />
-                        <span>
-                          נשלח ב-{donation.sentDate.toLocaleDateString('he-IL')}
-                          {donation.sentHebrewDate ? ` (${donation.sentHebrewDate})` : ''}
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{donor.fullName}</h4>
+                      <div className="flex items-center space-x-4 space-x-reverse text-sm text-gray-500">
+                        <span>מספר תורם: {donor.donorNumber}</span>
+                        <span className="flex items-center space-x-1 space-x-reverse">
+                          <Mail className="h-4 w-4" />
+                          <span>{donor.email}</span>
                         </span>
                       </div>
-                    )}
+                      <div className="text-sm text-gray-600 mt-1">
+                        סה"כ תרומות: {formatCurrency(donor.totalDonations)} | {donor.donations.length} תרומות
+                        {pendingEmails > 0 && (
+                          <span className="text-orange-600 mr-2">| {pendingEmails} ממתינות לשליחה</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3 space-x-reverse">
+                    <button
+                      onClick={() => openEditDonor(donor)}
+                      className="flex items-center space-x-2 space-x-reverse px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      <span>ערוך תורם</span>
+                    </button>
+                    <button
+                      onClick={() =>
+                        setSelectedDonor(prev => (prev?.id === donor.id ? null : donor))
+                      }
+                      className="flex items-center space-x-2 space-x-reverse px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      <Eye className="h-4 w-4" />
+                      <span>{selectedDonor?.id === donor.id ? 'סגור כרטיס' : 'צפה בכרטיס'}</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  {donation.pdfUrl && (
-                    <a
-                      href={`${API_URL}${donation.pdfUrl}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-16 h-16 border rounded overflow-hidden"
-                      title="צפה ב-PDF"
-                    >
-                      <iframe
-                        src={`${API_URL}${donation.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                        className="w-full h-full pointer-events-none"
-                        title="PDF Preview"
-                      />
-                    </a>
-                  )}
+                {selectedDonor?.id === donor.id && (
+                  <div className="mt-4">
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                      <div className="px-6 py-5 border-b bg-gradient-to-l from-blue-50 to-transparent">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">כרטיס תורם</p>
+                            <h5 className="mt-1 text-xl font-semibold text-gray-900">{donor.fullName}</h5>
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                              <span>מספר תורם: {donor.donorNumber}</span>
+                              <span className="flex items-center space-x-1 space-x-reverse">
+                                <Mail className="h-4 w-4" />
+                                <span>{donor.email}</span>
+                              </span>
+                              <span>סה"כ תרומות: {formatCurrency(donor.totalDonations)}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-start md:items-end gap-3 w-full md:w-auto">
+                            <div className="text-sm text-gray-600">
+                              {pendingEmails > 0
+                                ? `${pendingEmails} קבלות ממתינות לשליחה`
+                                : 'כל הקבלות נשלחו'}
+                            </div>
+                            <div className="flex gap-2 w-full md:w-auto">
+                              <button
+                                onClick={() => setShowAddDonation(donor)}
+                                className="flex-1 md:flex-initial bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                              >
+                                הוסף תרומה
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
-                  {donation.emailSent && (
-                    <div className="flex items-center space-x-1 space-x-reverse text-green-600">
-                      <CheckCircle className="h-4 w-4" />
-                      <span className="text-sm">נשלח</span>
+                      <div className="px-6 py-3 border-b bg-gray-50">
+                        <div className="flex items-center gap-2 overflow-x-auto">
+                          {donorTabs.map(tab => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setActiveDonorTab(tab.id)}
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                activeDonorTab === tab.id
+                                  ? 'bg-white text-blue-600 shadow-sm border border-blue-200'
+                                  : 'text-gray-600 hover:text-blue-600 hover:bg-white/60'
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="p-6 space-y-6">
+                        {activeDonorTab === 'details' && (
+                          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                            <div className="rounded-lg border border-gray-200 p-4">
+                              <span className="text-sm text-gray-500">שם מלא</span>
+                              <p className="mt-2 text-base font-semibold text-gray-900">{donor.fullName || '—'}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-200 p-4">
+                              <span className="text-sm text-gray-500">מספר תורם</span>
+                              <p className="mt-2 text-base font-semibold text-gray-900">{donor.donorNumber || '—'}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-200 p-4">
+                              <span className="text-sm text-gray-500">כתובת מייל</span>
+                              <p className="mt-2 text-base font-semibold text-gray-900 break-all">{donor.email || '—'}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-200 p-4">
+                              <span className="text-sm text-gray-500">סה"כ תרומות</span>
+                              <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrency(donor.totalDonations)}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-200 p-4">
+                              <span className="text-sm text-gray-500">מספר תרומות</span>
+                              <p className="mt-2 text-base font-semibold text-gray-900">{donor.donations.length}</p>
+                            </div>
+                            <div className="rounded-lg border border-gray-200 p-4">
+                              <span className="text-sm text-gray-500">קבלות בהמתנה</span>
+                              <p className={`mt-2 text-base font-semibold ${pendingEmails > 0 ? 'text-orange-600' : 'text-gray-900'}`}>
+                                {pendingEmails > 0 ? pendingEmails : 'אין'}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {activeDonorTab === 'donations' && (
+                          donor.donations.length > 0 ? (
+                            <div className="space-y-4">
+                              {donor.donations.map((donation) => {
+                                const sentOn = donation.sentDate ? donation.sentDate.toLocaleDateString('he-IL') : '';
+                                return (
+                                  <div key={donation.id} className="rounded-lg border border-gray-200 p-4 bg-white">
+                                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                      <div className="flex items-start space-x-3 space-x-reverse">
+                                        <div className="bg-blue-50 rounded-full p-2">
+                                          <FileText className="h-5 w-5 text-blue-600" />
+                                        </div>
+                                        <div className="space-y-2">
+                                          <div>
+                                            <p className="text-base font-semibold text-gray-900">{formatCurrency(donation.amount)}</p>
+                                            <p className="text-sm text-gray-600">
+                                              {donation.date.toLocaleDateString('he-IL')}
+                                              {donation.hebrewDate ? ` (${donation.hebrewDate})` : ''}
+                                            </p>
+                                          </div>
+                                          {donation.description && (
+                                            <p className="text-sm text-gray-600">{donation.description}</p>
+                                          )}
+                                          {donation.emailSent && sentOn && (
+                                            <div className="text-xs text-green-600 flex items-center space-x-1 space-x-reverse">
+                                              <CheckCircle className="h-3 w-3" />
+                                              <span>
+                                                נשלח ב-{sentOn}
+                                                {donation.sentHebrewDate ? ` (${donation.sentHebrewDate})` : ''}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap items-center justify-end gap-3">
+                                        {donation.pdfUrl && (
+                                          <a
+                                            href={`${API_URL}${donation.pdfUrl}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block w-20 h-20 border border-gray-200 rounded-lg overflow-hidden"
+                                            title="צפה ב-PDF"
+                                          >
+                                            <iframe
+                                              src={`${API_URL}${donation.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                                              className="w-full h-full pointer-events-none"
+                                              title="PDF Preview"
+                                            />
+                                          </a>
+                                        )}
+
+                                        {donation.emailSent && (
+                                          <div className="flex items-center space-x-1 space-x-reverse text-green-600">
+                                            <CheckCircle className="h-4 w-4" />
+                                            <span className="text-sm">נשלח</span>
+                                          </div>
+                                        )}
+
+                                        <button
+                                          onClick={() => openEditDonation(donor, donation)}
+                                          className="flex items-center space-x-1 space-x-reverse border border-blue-200 text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-50 transition-colors"
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                          <span>ערוך</span>
+                                        </button>
+
+                                        {renderSendButton(donation, donor.id)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">
+                              אין תרומות להצגה עבור תורם זה.
+                            </div>
+                          )
+                        )}
+
+                        {activeDonorTab === 'prayer' && (
+                          prayerNames.length > 0 ? (
+                            <div className="space-y-4">
+                              {prayerNames.map((entry, index) => {
+                                const objectEntry = isNameObject(entry) ? entry : null;
+                                const displayName = objectEntry ? objectEntry.name : entry;
+                                const secondary = objectEntry
+                                  ? [objectEntry.relation, objectEntry.notes].filter(Boolean).join(' • ')
+                                  : '';
+                                const createdAt = objectEntry ? formatDateString(objectEntry.createdAt) : '';
+                                const key = objectEntry?.id ? `prayer-${objectEntry.id}` : `prayer-${index}-${displayName}`;
+
+                                return (
+                                  <div key={key} className="rounded-lg border border-gray-200 p-4 bg-white">
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                                        <p className="text-base font-semibold text-gray-900">{displayName || 'ללא שם'}</p>
+                                        {createdAt && (
+                                          <span className="text-xs text-gray-500">נוסף בתאריך {createdAt}</span>
+                                        )}
+                                      </div>
+                                      {secondary && <p className="text-sm text-gray-600">{secondary}</p>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">
+                              עדיין לא נוספו שמות לתפילה לתורם זה.
+                            </div>
+                          )
+                        )}
+
+                        {activeDonorTab === 'yahrzeit' && (
+                          yahrzeitNames.length > 0 ? (
+                            <div className="space-y-4">
+                              {yahrzeitNames.map((entry, index) => {
+                                const objectEntry = isNameObject(entry) ? entry : null;
+                                const displayName = objectEntry ? objectEntry.name : entry;
+                                const secondary = objectEntry
+                                  ? [objectEntry.relation, objectEntry.notes].filter(Boolean).join(' • ')
+                                  : '';
+                                const hebrewDate = objectEntry?.hebrewDate || '';
+                                const gregorianDate = objectEntry ? formatDateString(objectEntry.gregorianDate || objectEntry.date) : '';
+                                const key = objectEntry?.id ? `yahrzeit-${objectEntry.id}` : `yahrzeit-${index}-${displayName}`;
+
+                                return (
+                                  <div key={key} className="rounded-lg border border-gray-200 p-4 bg-white">
+                                    <div className="flex flex-col gap-2">
+                                      <p className="text-base font-semibold text-gray-900">{displayName || 'ללא שם'}</p>
+                                      {secondary && <p className="text-sm text-gray-600">{secondary}</p>}
+                                      {(hebrewDate || gregorianDate) && (
+                                        <div className="text-sm text-gray-600 space-y-1">
+                                          {gregorianDate && <p>תאריך לועזי: {gregorianDate}</p>}
+                                          {hebrewDate && <p>תאריך עברי: {hebrewDate}</p>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500 text-sm">
+                              עדיין לא נוספו שמות ליארצייט לתורם זה.
+                            </div>
+                          )
+                        )}
+                      </div>
                     </div>
-                  )}
-
-                  <button
-                    onClick={() => openEditDonation(donor, donation)}
-                    className="flex items-center space-x-1 space-x-reverse border border-blue-200 text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-50 transition-colors"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    <span>ערוך</span>
-                  </button>
-
-                  {renderSendButton(donation, donor.id)}
-                </div>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
