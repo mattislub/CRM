@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash } from 'lucide-react';
+import { HDate } from '@hebcal/core';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -35,12 +36,160 @@ interface DonationRecord {
   pdfUrl?: string;
 }
 
+const DEFAULT_SENDER = 'צדקת עניי ארץ ישראל';
+const TORAH_SENDER = 'בני ירושלים';
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('he-IL', {
     style: 'currency',
     currency: 'ILS',
     maximumFractionDigits: 0
   }).format(amount);
+
+const formatHebrewDate = (dateInput: Date | string | undefined | null) => {
+  if (!dateInput) {
+    return '';
+  }
+
+  const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  try {
+    const hebrewDate = new HDate(date) as unknown as {
+      renderGematriya?: () => string;
+      render?: () => string;
+    };
+
+    if (typeof hebrewDate.renderGematriya === 'function') {
+      return hebrewDate.renderGematriya();
+    }
+
+    if (typeof hebrewDate.render === 'function') {
+      return hebrewDate.render();
+    }
+
+    return '';
+  } catch (error) {
+    console.error('Failed to format Hebrew date', error);
+    return '';
+  }
+};
+
+const getDefaultSenderByFundNumber = (fundNumber?: string) =>
+  fundNumber?.trim() === '6' ? TORAH_SENDER : DEFAULT_SENDER;
+
+const getDonationLink = (senderName: string) =>
+  senderName === DEFAULT_SENDER
+    ? 'https://www.matara.pro/nedarimplus/online/?mosad=7000144'
+    : 'https://www.matara.pro/nedarimplus/online/?mosad=7000145';
+
+const getEmailContent = (senderName: string, donation: DonationRecord) => {
+  const donorGreeting = donation.donorName?.trim() || 'תורם יקר';
+  const donationAmount = formatCurrency(donation.amount);
+  const donationDate = donation.date ? new Date(donation.date) : undefined;
+  const formattedDonationDate = donationDate?.toLocaleDateString('he-IL') ?? '';
+  const donationHebrewDate = donation.date ? formatHebrewDate(donation.date) : '';
+  const donationPurpose = donation.purpose?.trim();
+
+  const baseText = [
+    `שלום ${donorGreeting},`,
+    `תודה מעומק הלב על תרומתך בסך ${donationAmount}.`,
+    'מצורפת הקבלה עבור תרומתך המכובדת, המוכרת לפי סעיף 46.',
+  ];
+
+  if (donationPurpose) {
+    baseText.splice(2, 0, `ייעוד התרומה: ${donationPurpose}.`);
+  }
+
+  if (formattedDonationDate) {
+    const dateLine = donationHebrewDate
+      ? `תאריך התרומה: ${formattedDonationDate} (${donationHebrewDate})`
+      : `תאריך התרומה: ${formattedDonationDate}`;
+    baseText.splice(baseText.length - 1, 0, dateLine);
+  }
+
+  const donationLink = getDonationLink(senderName);
+
+  const blessingLine =
+    senderName === DEFAULT_SENDER
+      ? 'בזכות הצדקה תזכו לשפע ברכה והצלחה.'
+      : 'בזכות החזקת לומדי תורה תזכו לשפע ברכה והצלחה.';
+  const signature = senderName === DEFAULT_SENDER ? DEFAULT_SENDER : 'כולל בני ירושלים';
+  const contactLine = senderName === DEFAULT_SENDER ? 'טלפון: 1800-225-333' : undefined;
+
+  const baseHtml = (
+    blessing: string,
+    signoff: string,
+    link: string,
+    contact?: string
+  ) => `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charSet="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>קבלה על תרומתך</title>
+</head>
+<body style="margin:0;background-color:#f4f5f7;font-family:'Assistant','Segoe UI',Tahoma,Arial,sans-serif;direction:rtl;text-align:right;color:#1f2937;">
+  <table role="presentation" width="100%" style="border-collapse:collapse;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" style="max-width:600px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 45px rgba(15,23,42,0.12);">
+          <tr>
+            <td style="padding:32px;background:linear-gradient(135deg,#22d3ee,#0f766e);color:#ffffff;">
+              <p style="margin:0;font-size:28px;font-weight:700;">${senderName}</p>
+              <p style="margin:8px 0 0;font-size:16px;font-weight:500;">קבלה על תרומתך</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              <p style="margin:0 0 16px;font-size:18px;font-weight:600;">שלום ${donorGreeting},</p>
+              <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">תודה מעומק הלב על תרומתך בסך <strong>${donationAmount}</strong>.</p>
+              ${donationPurpose ? `<p style="margin:0 0 12px;font-size:16px;line-height:1.8;">ייעוד התרומה: ${donationPurpose}.</p>` : ''}
+              <p style="margin:0 0 12px;font-size:16px;line-height:1.8;">מצורפת הקבלה עבור תרומתך המכובדת, המוכרת לפי סעיף 46.</p>
+              ${formattedDonationDate ? `<p style="margin:0 0 12px;font-size:16px;line-height:1.8;">תאריך התרומה: ${formattedDonationDate}${donationHebrewDate ? ` (${donationHebrewDate})` : ''}</p>` : ''}
+              <p style="margin:0 0 20px;font-size:16px;line-height:1.8;">${blessing}</p>
+              <div style="margin:32px 0;text-align:center;">
+                <a href="${link}" style="display:inline-block;padding:14px 32px;background-color:#0f766e;color:#ffffff;border-radius:999px;text-decoration:none;font-size:16px;font-weight:700;">לתרומות</a>
+              </div>
+              <div style="padding:20px;background-color:#f0fdfa;border-radius:16px;font-size:14px;line-height:1.8;">
+                <p style="margin:0 0 6px;font-weight:600;">פרטי התרומה</p>
+                <p style="margin:0;">סכום התרומה: ${donationAmount}</p>
+                ${formattedDonationDate ? `<p style="margin:0;">תאריך התרומה: ${formattedDonationDate}${donationHebrewDate ? ` (${donationHebrewDate})` : ''}</p>` : ''}
+                ${donationPurpose ? `<p style="margin:0;">ייעוד התרומה: ${donationPurpose}</p>` : ''}
+              </div>
+              <p style="margin:24px 0 4px;font-size:16px;line-height:1.8;">בברכה,</p>
+              <p style="margin:0;font-size:16px;font-weight:700;">${signoff}</p>
+              ${contact ? `<p style="margin:4px 0 0;font-size:14px;color:#6b7280;">${contact}</p>` : ''}
+            </td>
+          </tr>
+        </table>
+        <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">הודעה זו נשלחה אליך באופן אוטומטי, אנא אל תגיב אליה ישירות.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const subject =
+    senderName === DEFAULT_SENDER
+      ? 'קבלה על תרומתך - צדקת עניי ארץ ישראל'
+      : 'קבלה על תרומתך - בני ירושלים';
+
+  const text = [
+    ...baseText,
+    blessingLine,
+    `לתרומה נוספת: ${donationLink}`,
+    'בברכה,',
+    signature,
+    ...(contactLine ? [contactLine] : []),
+  ].join('\n');
+
+  const html = baseHtml(blessingLine, signature, donationLink, contactLine);
+
+  return { subject, text, html };
+};
 
 const determineStatus = (donation: ApiDonationRecord): DonationStatus => {
   if (donation.emailSent) {
@@ -88,6 +237,7 @@ export default function DonationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingDonation, setEditingDonation] = useState<DonationRecord | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     amount: '',
     date: '',
@@ -192,6 +342,61 @@ export default function DonationsPage() {
       pdfUrl: donation.pdfUrl || '',
       fundNumber: donation.fundNumber || '',
     });
+  };
+
+  const handleSendEmail = async (donation: DonationRecord) => {
+    if (!donation.donorEmail) {
+      setError('לא ניתן לשלוח מייל ללא כתובת אימייל תקפה.');
+      return;
+    }
+
+    const senderName = getDefaultSenderByFundNumber(donation.fundNumber);
+    const { subject, text, html } = getEmailContent(senderName, donation);
+    const donationIdNumber = Number.parseInt(donation.id, 10);
+
+    setSendingId(donation.id);
+
+    try {
+      const payload = {
+        to: donation.donorEmail,
+        subject,
+        text,
+        html,
+        pdfUrl: donation.pdfUrl,
+        senderName,
+        ...(Number.isNaN(donationIdNumber) ? {} : { donationId: donationIdNumber }),
+      };
+
+      const response = await fetch(`${API_URL}/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send donation email');
+      }
+
+      setDonations(prevDonations =>
+        prevDonations.map(current => {
+          if (current.id !== donation.id) {
+            return current;
+          }
+
+          return {
+            ...current,
+            emailSent: true,
+            status: 'נשלח',
+          };
+        })
+      );
+      setError(prev => (prev === 'שליחת המייל נכשלה. נסו שוב מאוחר יותר.' ? null : prev));
+    } catch (err) {
+      console.error('Failed to send donation email', err);
+      setError('שליחת המייל נכשלה. נסו שוב מאוחר יותר.');
+    } finally {
+      setSendingId(null);
+    }
   };
 
   const closeEditModal = () => {
@@ -446,7 +651,9 @@ export default function DonationsPage() {
                           <span className="sr-only">ערוך תרומה</span>
                         </button>
                         <button
-                          className="inline-flex h-9 w-9 items-center justify-center text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors"
+                          onClick={() => handleSendEmail(donation)}
+                          disabled={sendingId === donation.id || !donation.donorEmail}
+                          className="inline-flex h-9 w-9 items-center justify-center text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-full transition-colors"
                           aria-label="שלח מייל"
                         >
                           <Mail className="h-4 w-4" />
