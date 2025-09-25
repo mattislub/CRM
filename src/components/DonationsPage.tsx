@@ -17,6 +17,7 @@ interface ApiDonationRecord {
   pdfUrl: string | null;
   emailSent: boolean;
   sentDate: string | null;
+  fundNumber: string | null;
 }
 
 interface DonationRecord {
@@ -26,6 +27,7 @@ interface DonationRecord {
   donorName: string;
   donorEmail: string;
   amount: number;
+  fundNumber: string;
   purpose: string;
   date: string;
   status: DonationStatus;
@@ -70,6 +72,7 @@ const toDonationRecord = (donation: ApiDonationRecord): DonationRecord => ({
   donorName: donation.donorName || 'תורם לא ידוע',
   donorEmail: donation.donorEmail || '',
   amount: donation.amount ?? 0,
+  fundNumber: donation.fundNumber || '',
   purpose: donation.description || '',
   date: donation.donationDate || '',
   status: determineStatus(donation),
@@ -90,6 +93,7 @@ export default function DonationsPage() {
     date: '',
     purpose: '',
     pdfUrl: '',
+    fundNumber: '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -137,7 +141,8 @@ export default function DonationsPage() {
         donation.donorName.toLowerCase().includes(normalizedSearch) ||
         donation.donorEmail.toLowerCase().includes(normalizedSearch) ||
         donation.purpose.toLowerCase().includes(normalizedSearch) ||
-        donation.donorNumber.toLowerCase().includes(normalizedSearch);
+        donation.donorNumber.toLowerCase().includes(normalizedSearch) ||
+        donation.fundNumber.toLowerCase().includes(normalizedSearch);
 
       const matchesStatus = statusFilter === 'all' || donation.status === statusFilter;
 
@@ -185,12 +190,13 @@ export default function DonationsPage() {
       date: formatDateForInput(donation.date),
       purpose: donation.purpose || '',
       pdfUrl: donation.pdfUrl || '',
+      fundNumber: donation.fundNumber || '',
     });
   };
 
   const closeEditModal = () => {
     setEditingDonation(null);
-    setEditForm({ amount: '', date: '', purpose: '', pdfUrl: '' });
+    setEditForm({ amount: '', date: '', purpose: '', pdfUrl: '', fundNumber: '' });
     setEditError(null);
     setSavingEdit(false);
   };
@@ -227,6 +233,7 @@ export default function DonationsPage() {
           date: editForm.date,
           description: editForm.purpose,
           pdfUrl: trimmedPdfUrl || null,
+          fundNumber: editForm.fundNumber.trim() || null,
         })
       });
 
@@ -253,6 +260,8 @@ export default function DonationsPage() {
             : undefined;
       const updatedEmailSent =
         typeof data.emailSent === 'boolean' ? data.emailSent : editingDonation.emailSent;
+      const updatedFundNumber =
+        typeof data.fundNumber === 'string' ? data.fundNumber : editForm.fundNumber;
 
       setDonations(prevDonations =>
         prevDonations.map(donation => {
@@ -275,6 +284,7 @@ export default function DonationsPage() {
             purpose: updatedDescription || '',
             pdfUrl: hasPdf ? sanitizedPdfUrl : undefined,
             emailSent: updatedEmailSent,
+            fundNumber: updatedFundNumber?.trim() || '',
             status: nextStatus,
           };
         })
@@ -382,6 +392,7 @@ export default function DonationsPage() {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">תורם</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">אימייל</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">תאריך</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">מס_קרן</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">ייעוד התרומה</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">סכום</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">סטטוס</th>
@@ -391,7 +402,7 @@ export default function DonationsPage() {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">
+                  <td colSpan={8} className="px-6 py-16 text-center text-gray-500 text-sm">
                     טוען נתוני תרומות...
                   </td>
                 </tr>
@@ -408,6 +419,7 @@ export default function DonationsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {donation.date ? new Date(donation.date).toLocaleDateString('he-IL') : '—'}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.fundNumber || '—'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.purpose || '—'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                       {formatCurrency(donation.amount)}
@@ -449,7 +461,7 @@ export default function DonationsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">
+                  <td colSpan={8} className="px-6 py-16 text-center text-gray-500 text-sm">
                     לא נמצאו תרומות התואמות לחיפוש.
                   </td>
                 </tr>
@@ -521,6 +533,25 @@ export default function DonationsPage() {
                     }))
                   }
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="edit-fund-number">
+                  מס_קרן
+                </label>
+                <input
+                  id="edit-fund-number"
+                  type="text"
+                  value={editForm.fundNumber}
+                  onChange={event =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      fundNumber: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="לדוגמה: 1234"
                 />
               </div>
 

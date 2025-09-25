@@ -170,12 +170,19 @@ pool
       donation_date DATE NOT NULL,
       description TEXT,
       pdf_url TEXT,
+      fund_number TEXT,
       email_sent BOOLEAN DEFAULT FALSE,
       sent_date TIMESTAMPTZ
     )`
   )
   .catch(err => {
     console.error('Failed to ensure donations table exists', err);
+  });
+
+pool
+  .query('ALTER TABLE donations ADD COLUMN IF NOT EXISTS fund_number TEXT')
+  .catch(err => {
+    console.error('Failed to ensure fund_number column exists on donations table', err);
   });
 
 pool
@@ -272,6 +279,7 @@ const server = createServer((req, res) => {
                     'date', dn.donation_date,
                     'description', dn.description,
                     'pdfUrl', dn.pdf_url,
+                    'fundNumber', dn.fund_number,
                     'emailSent', dn.email_sent,
                     'sentDate', dn.sent_date
                   )
@@ -291,6 +299,7 @@ const server = createServer((req, res) => {
           donations: row.donations.map(d => ({
             ...d,
             amount: parseFloat(d.amount),
+            fundNumber: d.fundNumber ?? null,
           })),
           totalDonations: parseFloat(row.total_donations),
         }));
@@ -438,6 +447,7 @@ const server = createServer((req, res) => {
                 dn.donation_date,
                 dn.description,
                 dn.pdf_url,
+                dn.fund_number,
                 dn.email_sent,
                 dn.sent_date,
                 d.donor_number,
@@ -458,6 +468,7 @@ const server = createServer((req, res) => {
           donationDate: row.donation_date,
           description: row.description,
           pdfUrl: row.pdf_url,
+          fundNumber: row.fund_number,
           emailSent: row.email_sent,
           sentDate: row.sent_date,
         }));
@@ -479,27 +490,32 @@ const server = createServer((req, res) => {
         const data = JSON.parse(body);
         pool
           .query(
-            `INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url, email_sent, sent_date)
-             VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            `INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url, fund_number, email_sent, sent_date)
+             VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, donor_id, amount, donation_date, description, pdf_url, fund_number, email_sent, sent_date`,
             [
               data.donorId,
               data.amount,
               data.date,
               data.description,
               data.pdfUrl || null,
+              data.fundNumber || null,
               data.emailSent || false,
               data.sentDate || null,
             ]
           )
           .then(result => {
+            const inserted = result.rows[0];
             const donation = {
-              id: result.rows[0].id,
-              amount: data.amount,
-              date: data.date,
-              description: data.description,
-              pdfUrl: data.pdfUrl || null,
-              emailSent: data.emailSent || false,
-              sentDate: data.sentDate || null,
+              id: inserted.id,
+              donorId: inserted.donor_id,
+              amount: inserted.amount != null ? parseFloat(inserted.amount) : 0,
+              date: inserted.donation_date,
+              description: inserted.description,
+              pdfUrl: inserted.pdf_url,
+              fundNumber: inserted.fund_number,
+              emailSent: inserted.email_sent,
+              sentDate: inserted.sent_date,
             };
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(donation));
@@ -540,14 +556,16 @@ const server = createServer((req, res) => {
              SET amount = $1,
                  donation_date = $2,
                  description = $3,
-                 pdf_url = $4
-             WHERE id = $5
-             RETURNING id, donor_id, amount, donation_date, description, pdf_url, email_sent, sent_date`,
+                 pdf_url = $4,
+                 fund_number = $5
+             WHERE id = $6
+             RETURNING id, donor_id, amount, donation_date, description, pdf_url, fund_number, email_sent, sent_date`,
             [
               data.amount,
               data.date,
               data.description,
               data.pdfUrl || null,
+              data.fundNumber || null,
               donationId,
             ]
           )
@@ -561,10 +579,11 @@ const server = createServer((req, res) => {
             const donation = {
               id: updated.id,
               donorId: updated.donor_id,
-              amount: parseFloat(updated.amount),
+              amount: updated.amount != null ? parseFloat(updated.amount) : 0,
               date: updated.donation_date,
               description: updated.description,
               pdfUrl: updated.pdf_url,
+              fundNumber: updated.fund_number,
               emailSent: updated.email_sent,
               sentDate: updated.sent_date,
             };
@@ -738,6 +757,12 @@ const server = createServer((req, res) => {
           }
           return cell.toString().trim() === 'תאריך';
         });
+        const fundNumberColumnIndex = headerRow.findIndex(cell => {
+          if (cell == null) {
+            return false;
+          }
+          return cell.toString().trim() === 'מס_קרן';
+        });
 
         const parseExcelDate = value => {
           if (value == null || value === '') {
@@ -785,6 +810,10 @@ const server = createServer((req, res) => {
           const dateCellIndex = dateColumnIndex >= 0 ? dateColumnIndex : 12;
           const donationDate =
             parseExcelDate(row[dateCellIndex]) || (dateColumnIndex >= 0 ? undefined : parseExcelDate(row[12])) || new Date();
+          const fundNumber =
+            fundNumberColumnIndex >= 0
+              ? (row[fundNumberColumnIndex] != null ? row[fundNumberColumnIndex].toString().trim() : '')
+              : '';
           let donorId;
           const existing = await pool.query(
             'SELECT id FROM donors WHERE donor_number = $1',
@@ -800,10 +829,10 @@ const server = createServer((req, res) => {
             donorId = inserted.rows[0].id;
           }
           await pool.query(
-            'INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url) VALUES($1, $2, $3, $4, $5)',
-            [donorId, amount, donationDate, row[2] || '', pages[i - 1]]
+            'INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url, fund_number) VALUES($1, $2, $3, $4, $5, $6)',
+            [donorId, amount, donationDate, row[2] || '', pages[i - 1], fundNumber || null]
           );
-          assignments.push({ donorNumber, fullName, amount, donationDate });
+          assignments.push({ donorNumber, fullName, amount, donationDate, fundNumber });
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, assignments }));

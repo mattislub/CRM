@@ -16,6 +16,7 @@ interface Donation {
   sentDate?: Date;
   hebrewDate?: string;
   sentHebrewDate?: string;
+  fundNumber?: string;
 }
 
 type DonorNameEntry =
@@ -72,6 +73,7 @@ export default function DonorsPage() {
     amount: '',
     date: '',
     description: '',
+    fundNumber: '',
     file: null as File | null
   });
   const [editDonation, setEditDonation] = useState<{ donor: Donor; donation: Donation } | null>(null);
@@ -79,12 +81,14 @@ export default function DonorsPage() {
     amount: string;
     date: string;
     description: string;
+    fundNumber: string;
     file: File | null;
     pdfUrl?: string;
   }>({
     amount: '',
     date: '',
     description: '',
+    fundNumber: '',
     file: null,
     pdfUrl: undefined,
   });
@@ -143,8 +147,10 @@ export default function DonorsPage() {
     const hasDate = Boolean(donation.date);
     const date = hasDate ? new Date(donation.date) : new Date();
     const sentDate = donation.sentDate ? new Date(donation.sentDate) : undefined;
+    const fundNumber = typeof donation.fundNumber === 'string' ? donation.fundNumber : '';
     return {
       ...donation,
+      fundNumber,
       date,
       sentDate,
       hebrewDate: hasDate ? formatHebrewDate(date) : undefined,
@@ -477,6 +483,7 @@ export default function DonorsPage() {
       amount: donation.amount.toString(),
       date: donationDate.toISOString().split('T')[0],
       description: donation.description || '',
+      fundNumber: donation.fundNumber || '',
       file: null,
       pdfUrl: donation.pdfUrl,
     });
@@ -586,10 +593,14 @@ export default function DonorsPage() {
           amount: parseFloat(newDonation.amount),
           date: newDonation.date,
           description: newDonation.description,
-          pdfUrl
+          pdfUrl,
+          fundNumber: newDonation.fundNumber.trim() || null
         })
       });
       const data = await res.json();
+      const amountFromServer = typeof data.amount === 'number' ? data.amount : parseFloat(data.amount);
+      const normalizedAmount = Number.isFinite(amountFromServer) ? amountFromServer : parseFloat(newDonation.amount);
+      const donationPayload = { ...data, amount: normalizedAmount };
       setDonors(prev =>
         prev.map(d =>
           d.id === showAddDonation.id
@@ -597,15 +608,15 @@ export default function DonorsPage() {
                 ...d,
                 donations: [
                   ...d.donations,
-                  createDonation(data)
+                  createDonation(donationPayload)
                 ],
-                totalDonations: d.totalDonations + data.amount
+                totalDonations: d.totalDonations + normalizedAmount
               }
             : d
         )
       );
       setShowAddDonation(null);
-      setNewDonation({ amount: '', date: '', description: '', file: null });
+      setNewDonation({ amount: '', date: '', description: '', fundNumber: '', file: null });
     } catch (err) {
       console.error('Failed to add donation', err);
     }
@@ -636,6 +647,7 @@ export default function DonorsPage() {
           date: editDonationData.date,
           description: editDonationData.description,
           pdfUrl,
+          fundNumber: editDonationData.fundNumber.trim() || null,
         })
       });
 
@@ -676,6 +688,7 @@ export default function DonorsPage() {
                     pdfUrl: data.pdfUrl || undefined,
                     emailSent: data.emailSent ?? d.emailSent,
                     sentDate: updatedSentDate,
+                    fundNumber: data.fundNumber || '',
                   }
                 : d
             ),
@@ -693,7 +706,7 @@ export default function DonorsPage() {
       });
 
       setEditDonation(null);
-      setEditDonationData({ amount: '', date: '', description: '', file: null, pdfUrl: undefined });
+      setEditDonationData({ amount: '', date: '', description: '', fundNumber: '', file: null, pdfUrl: undefined });
     } catch (err) {
       console.error('Failed to update donation', err);
     }
@@ -981,6 +994,19 @@ export default function DonorsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  מס_קרן
+                </label>
+                <input
+                  type="text"
+                  value={newDonation.fundNumber}
+                  onChange={(e) => setNewDonation(prev => ({ ...prev, fundNumber: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס מס קרן"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   תיאור
                 </label>
                 <input
@@ -1110,13 +1136,13 @@ export default function DonorsPage() {
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">ערוך תרומה</h3>
-              <button
-                onClick={() => {
-                  setEditDonation(null);
-                  setEditDonationData({ amount: '', date: '', description: '', file: null, pdfUrl: undefined });
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
+                <button
+                  onClick={() => {
+                    setEditDonation(null);
+                    setEditDonationData({ amount: '', date: '', description: '', fundNumber: '', file: null, pdfUrl: undefined });
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1144,6 +1170,19 @@ export default function DonorsPage() {
                   value={editDonationData.date}
                   onChange={(e) => setEditDonationData(prev => ({ ...prev, date: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  מס_קרן
+                </label>
+                <input
+                  type="text"
+                  value={editDonationData.fundNumber}
+                  onChange={(e) => setEditDonationData(prev => ({ ...prev, fundNumber: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הכנס מס קרן"
                 />
               </div>
 
@@ -1474,6 +1513,9 @@ export default function DonorsPage() {
                                           </div>
                                           {donation.description && (
                                             <p className="text-sm text-gray-600">{donation.description}</p>
+                                          )}
+                                          {donation.fundNumber && (
+                                            <p className="text-sm text-gray-600">מס_קרן: {donation.fundNumber}</p>
                                           )}
                                           {donation.emailSent && sentOn && (
                                             <div className="text-xs text-green-600 flex items-center space-x-1 space-x-reverse">
