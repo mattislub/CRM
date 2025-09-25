@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import HomePage from './components/HomePage';
 import UploadsPage from './components/UploadsPage';
 import DonorsPage from './components/DonorsPage';
 import PdfListPage from './components/PdfListPage';
@@ -11,7 +12,7 @@ function App() {
     <Router>
       <Layout>
         <Routes>
-          <Route path="/" element={<UploadsPage />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/uploads" element={<UploadsPage />} />
           <Route path="/pdfs" element={<PdfListPage />} />
           <Route path="/donors" element={<DonorsPage />} />
