@@ -50,6 +50,9 @@ export default function DonorsPage() {
   ] as const;
   type SenderOption = (typeof SENDER_OPTIONS)[number]['senderName'];
 
+  const getDefaultSenderByFundNumber = (fundNumber?: string | null): SenderOption =>
+    fundNumber?.trim() === '6' ? 'בני ירושלים' : 'צדקת עניי ארץ ישראל';
+
   const [donors, setDonors] = useState<Donor[]>([]);
 
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
@@ -492,14 +495,15 @@ export default function DonorsPage() {
   const handleSendEmail = async (
     donorId: string,
     donationId: string,
-    senderName: SenderOption = SENDER_OPTIONS[0].senderName
+    senderName?: SenderOption
   ) => {
     const donor = donors.find(d => d.id === donorId);
     const donation = donor?.donations.find(d => d.id === donationId);
     if (!donor || !donation) return;
+    const effectiveSenderName = senderName ?? getDefaultSenderByFundNumber(donation.fundNumber);
     setSendingDonationId(donationId);
     try {
-      const { subject, text, html } = getEmailContent(senderName, donor, donation);
+      const { subject, text, html } = getEmailContent(effectiveSenderName, donor, donation);
 
       await fetch(`${API_URL}/email`, {
         method: 'POST',
@@ -511,7 +515,7 @@ export default function DonorsPage() {
           html,
           donationId,
           pdfUrl: donation.pdfUrl,
-          senderName
+          senderName: effectiveSenderName
         })
       });
       const sentDate = new Date();
@@ -548,7 +552,8 @@ export default function DonorsPage() {
       for (const donor of donors) {
         for (const donation of donor.donations) {
           if (!donation.emailSent) {
-            const selectedSender = selectedSenders[donation.id] || SENDER_OPTIONS[0].senderName;
+            const selectedSender =
+              selectedSenders[donation.id] || getDefaultSenderByFundNumber(donation.fundNumber);
             await handleSendEmail(donor.id, donation.id, selectedSender);
           }
         }
@@ -714,7 +719,8 @@ export default function DonorsPage() {
 
   const renderSendButton = (donation: Donation, donorId: string) => {
     const isSending = sendingDonationId === donation.id;
-    const selectedSender = selectedSenders[donation.id] || SENDER_OPTIONS[0].senderName;
+    const selectedSender =
+      selectedSenders[donation.id] || getDefaultSenderByFundNumber(donation.fundNumber);
     return (
       <div className="flex flex-col space-y-2">
         <label className="text-xs text-gray-600" htmlFor={`sender-select-${donation.id}`}>
