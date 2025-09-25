@@ -362,7 +362,7 @@ export default function DonationsPage() {
                 type="text"
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
-                placeholder="חיפוש לפי שם, מייל או ייעוד"
+                placeholder="חיפוש לפי שם או מייל"
                 className="bg-transparent w-full focus:outline-none text-sm text-gray-700"
               />
             </div>
@@ -393,7 +393,6 @@ export default function DonationsPage() {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">אימייל</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">תאריך</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">מס_קרן</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">ייעוד התרומה</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">סכום</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">סטטוס</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider text-center">פעולות</th>
@@ -402,7 +401,7 @@ export default function DonationsPage() {
             <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center text-gray-500 text-sm">
+                  <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">
                     טוען נתוני תרומות...
                   </td>
                 </tr>
@@ -420,7 +419,6 @@ export default function DonationsPage() {
                       {donation.date ? new Date(donation.date).toLocaleDateString('he-IL') : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.fundNumber || '—'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{donation.purpose || '—'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                       {formatCurrency(donation.amount)}
                     </td>
@@ -441,19 +439,27 @@ export default function DonationsPage() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => openEditModal(donation)}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                          className="inline-flex h-9 w-9 items-center justify-center text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                          aria-label="ערוך תרומה"
                         >
-                          <Pencil className="h-4 w-4" /> ערוך
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only">ערוך תרומה</span>
                         </button>
-                        <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors">
-                          <Mail className="h-4 w-4" /> שלח מייל
+                        <button
+                          className="inline-flex h-9 w-9 items-center justify-center text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors"
+                          aria-label="שלח מייל"
+                        >
+                          <Mail className="h-4 w-4" />
+                          <span className="sr-only">שלח מייל</span>
                         </button>
                         <button
                           onClick={() => handleDeleteDonation(donation.id)}
                           disabled={deletingId === donation.id}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-full transition-colors"
+                          className="inline-flex h-9 w-9 items-center justify-center text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-full transition-colors"
+                          aria-label={deletingId === donation.id ? 'מוחק תרומה' : 'מחק תרומה'}
                         >
-                          <Trash className="h-4 w-4" /> {deletingId === donation.id ? 'מוחק...' : 'מחק'}
+                          <Trash className="h-4 w-4" />
+                          <span className="sr-only">{deletingId === donation.id ? 'מוחק תרומה' : 'מחק תרומה'}</span>
                         </button>
                       </div>
                     </td>
@@ -461,7 +467,7 @@ export default function DonationsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center text-gray-500 text-sm">
+                  <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">
                     לא נמצאו תרומות התואמות לחיפוש.
                   </td>
                 </tr>
