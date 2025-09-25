@@ -50,6 +50,19 @@ const determineStatus = (donation: ApiDonationRecord): DonationStatus => {
   return 'התקבל';
 };
 
+const formatDateForInput = (value: string) => {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toISOString().split('T')[0];
+};
+
 const toDonationRecord = (donation: ApiDonationRecord): DonationRecord => ({
   id: donation.id.toString(),
   donorId: donation.donorId,
@@ -71,6 +84,15 @@ export default function DonationsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingDonation, setEditingDonation] = useState<DonationRecord | null>(null);
+  const [editForm, setEditForm] = useState({
+    amount: '',
+    date: '',
+    purpose: '',
+    pdfUrl: '',
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +174,118 @@ export default function DonationsPage() {
       setError('אירעה שגיאה במחיקת התרומה. נסו שוב מאוחר יותר.');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openEditModal = (donation: DonationRecord) => {
+    setEditingDonation(donation);
+    setEditError(null);
+    setEditForm({
+      amount: donation.amount ? donation.amount.toString() : '',
+      date: formatDateForInput(donation.date),
+      purpose: donation.purpose || '',
+      pdfUrl: donation.pdfUrl || '',
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditingDonation(null);
+    setEditForm({ amount: '', date: '', purpose: '', pdfUrl: '' });
+    setEditError(null);
+    setSavingEdit(false);
+  };
+
+  const handleEditSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingDonation) {
+      return;
+    }
+
+    const trimmedAmount = editForm.amount.trim();
+    const parsedAmount = Number(trimmedAmount);
+    if (!trimmedAmount || Number.isNaN(parsedAmount)) {
+      setEditError('אנא הזינו סכום תרומה תקין.');
+      return;
+    }
+
+    if (!editForm.date) {
+      setEditError('אנא בחרו תאריך תרומה.');
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError(null);
+
+    const trimmedPdfUrl = editForm.pdfUrl.trim();
+
+    try {
+      const response = await fetch(`${API_URL}/donations/${editingDonation.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parsedAmount,
+          date: editForm.date,
+          description: editForm.purpose,
+          pdfUrl: trimmedPdfUrl || null,
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to update donation', data);
+        setEditError('שמירת התרומה נכשלה. נסו שוב מאוחר יותר.');
+        return;
+      }
+
+      const amountFromServer =
+        typeof data.amount === 'number' ? data.amount : Number(data.amount);
+      const updatedAmount = Number.isFinite(amountFromServer)
+        ? amountFromServer
+        : parsedAmount;
+      const updatedDate = typeof data.date === 'string' && data.date ? data.date : editForm.date;
+      const updatedDescription = typeof data.description === 'string' ? data.description : editForm.purpose;
+      const updatedPdfUrl =
+        typeof data.pdfUrl === 'string' && data.pdfUrl
+          ? data.pdfUrl
+          : trimmedPdfUrl
+            ? trimmedPdfUrl
+            : undefined;
+      const updatedEmailSent =
+        typeof data.emailSent === 'boolean' ? data.emailSent : editingDonation.emailSent;
+
+      setDonations(prevDonations =>
+        prevDonations.map(donation => {
+          if (donation.id !== editingDonation.id) {
+            return donation;
+          }
+
+          const sanitizedPdfUrl = updatedPdfUrl ? updatedPdfUrl.trim() : '';
+          const hasPdf = sanitizedPdfUrl.length > 0;
+          const nextStatus: DonationStatus = updatedEmailSent
+            ? 'נשלח'
+            : hasPdf
+              ? 'ממתין'
+              : 'התקבל';
+
+          return {
+            ...donation,
+            amount: updatedAmount,
+            date: updatedDate,
+            purpose: updatedDescription || '',
+            pdfUrl: hasPdf ? sanitizedPdfUrl : undefined,
+            emailSent: updatedEmailSent,
+            status: nextStatus,
+          };
+        })
+      );
+
+      closeEditModal();
+    } catch (err) {
+      console.error('Failed to update donation', err);
+      setEditError('אירעה שגיאה בשמירת התרומה. נסו שוב מאוחר יותר.');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -293,7 +427,10 @@ export default function DonationsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2">
-                        <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors">
+                        <button
+                          onClick={() => openEditModal(donation)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                        >
                           <Pencil className="h-4 w-4" /> ערוך
                         </button>
                         <button className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full transition-colors">
@@ -325,6 +462,139 @@ export default function DonationsPage() {
 
         )}
       </div>
+
+      {editingDonation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">עריכת תרומה</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {editingDonation.donorName} • סכום נוכחי: {formatCurrency(editingDonation.amount)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={savingEdit}
+                className="text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="סגור חלון עריכה"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-5">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="edit-amount">
+                  סכום התרומה
+                </label>
+                <input
+                  id="edit-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editForm.amount}
+                  onChange={event =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      amount: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="לדוגמה: 250"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="edit-date">
+                  תאריך התרומה
+                </label>
+                <input
+                  id="edit-date"
+                  type="date"
+                  value={editForm.date}
+                  onChange={event =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      date: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="edit-purpose">
+                  ייעוד התרומה
+                </label>
+                <input
+                  id="edit-purpose"
+                  type="text"
+                  value={editForm.purpose}
+                  onChange={event =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      purpose: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="ייעוד התרומה"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700" htmlFor="edit-pdf">
+                  קובץ קבלה (קישור)
+                </label>
+                <input
+                  id="edit-pdf"
+                  type="text"
+                  value={editForm.pdfUrl}
+                  onChange={event =>
+                    setEditForm(prev => ({
+                      ...prev,
+                      pdfUrl: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="הדביקו קישור לקובץ PDF (לא חובה)"
+                />
+                {editingDonation.pdfUrl && (
+                  <a
+                    href={`${API_URL}${editingDonation.pdfUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-block text-sm text-blue-600 hover:underline"
+                  >
+                    צפייה בקובץ הנוכחי
+                  </a>
+                )}
+              </div>
+
+              {editError && <p className="text-sm text-red-600">{editError}</p>}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  disabled={savingEdit}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  ביטול
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {savingEdit ? 'שומר...' : 'שמור שינויים'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
