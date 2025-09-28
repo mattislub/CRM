@@ -863,7 +863,16 @@ export default function DonationsPage() {
                 </tr>
               ) : filteredDonations.length > 0 ? (
                 filteredDonations.map(donation => (
-                  <tr key={donation.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={donation.id}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    onDoubleClick={event => {
+                      if (event.target instanceof HTMLElement && event.target.closest('button, a, input, label')) {
+                        return;
+                      }
+                      openEditModal(donation);
+                    }}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex flex-col">
                         <span>{donation.donorName}</span>

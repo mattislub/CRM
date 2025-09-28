@@ -1866,7 +1866,10 @@ export default function DonorsPage() {
             return (
               <div key={donor.id} className="px-6 py-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4 space-x-reverse">
+                  <div
+                    className="flex items-center space-x-4 space-x-reverse"
+                    onDoubleClick={() => setSelectedDonor(donor)}
+                  >
                     <div className="bg-blue-100 rounded-full p-3">
                       <Users className="h-6 w-6 text-blue-600" />
                     </div>
