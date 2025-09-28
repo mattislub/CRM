@@ -104,6 +104,8 @@ export default function DonorsPage() {
   } | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
   const [minTotal, setMinTotal] = useState('');
   const [maxTotal, setMaxTotal] = useState('');
   const [onlyPending, setOnlyPending] = useState(false);
@@ -111,6 +113,7 @@ export default function DonorsPage() {
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedSenders, setSelectedSenders] = useState<Record<string, SenderOption>>({});
   const [activeDonorTab, setActiveDonorTab] = useState<'details' | 'donations' | 'prayer' | 'yahrzeit'>('details');
+  const modalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const isNameObject = (entry: DonorNameEntry): entry is Exclude<DonorNameEntry, string> =>
     typeof entry === 'object' && entry !== null;
@@ -159,6 +162,38 @@ export default function DonorsPage() {
       hebrewDate: hasDate ? formatHebrewDate(date) : undefined,
       sentHebrewDate: sentDate ? formatHebrewDate(sentDate) : undefined
     };
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'F5') {
+        event.preventDefault();
+        setModalSearchTerm(searchTerm);
+        setIsSearchModalOpen(true);
+      }
+
+      if (event.key === 'Escape') {
+        setIsSearchModalOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (isSearchModalOpen) {
+      modalSearchInputRef.current?.focus();
+      modalSearchInputRef.current?.select();
+    }
+  }, [isSearchModalOpen]);
+
+  const handleModalSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearchTerm(modalSearchTerm);
+    setIsSearchModalOpen(false);
   };
 
   useEffect(() => {
@@ -782,10 +817,59 @@ export default function DonorsPage() {
 
   return (
     <div className="space-y-8">
+      {isSearchModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          onClick={() => setIsSearchModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-lg w-full max-w-md p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">חיפוש תורמים</h2>
+              <button
+                type="button"
+                onClick={() => setIsSearchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="סגור חלון החיפוש"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleModalSearch} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="donors-modal-search">
+                  מה תרצו לחפש?
+                </label>
+                <input
+                  id="donors-modal-search"
+                  ref={modalSearchInputRef}
+                  type="text"
+                  value={modalSearchTerm}
+                  onChange={(event) => setModalSearchTerm(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הקלידו שם, מייל או מספר תורם"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                >
+                  חפש
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">רשימת תורמים</h1>
           <p className="text-gray-600 mt-2">ניהול תורמים ותרומות</p>
+          <p className="text-sm text-gray-500 mt-1">לחיצה על F5 תפתח חלון חיפוש.</p>
         </div>
 
         <div className="flex items-center space-x-3 space-x-reverse">
