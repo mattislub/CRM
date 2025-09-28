@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, FileText, Users, HandCoins } from 'lucide-react';
+import { FileText, Users, HandCoins } from 'lucide-react';
 
 interface PageLink {
   title: string;
@@ -11,14 +11,8 @@ interface PageLink {
 
 const pageLinks: PageLink[] = [
   {
-    title: 'העלאות קבצים',
-    description: 'נהל והעלה קבצי Excel ו-PDF למערכת',
-    to: '/uploads',
-    icon: <Upload className="h-12 w-12 text-blue-600" />
-  },
-  {
     title: 'קבצי PDF',
-    description: 'צפה ונהל את כל קבצי ה-PDF במערכת',
+    description: 'העלה ונהל את כל קבצי ה-PDF במערכת',
     to: '/pdfs',
     icon: <FileText className="h-12 w-12 text-blue-600" />
   },
