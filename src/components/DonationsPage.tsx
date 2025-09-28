@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { IdCard, Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash, X } from 'lucide-react';
 import { HDate } from '@hebcal/core';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -230,6 +231,7 @@ const toDonationRecord = (donation: ApiDonationRecord): DonationRecord => ({
 });
 
 export default function DonationsPage() {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [modalSearchTerm, setModalSearchTerm] = useState('');
@@ -439,6 +441,19 @@ export default function DonationsPage() {
     setEditForm({ amount: '', date: '', purpose: '', pdfUrl: '', fundNumber: '' });
     setEditError(null);
     setSavingEdit(false);
+  };
+
+  const handleOpenDonorCard = (donation: DonationRecord) => {
+    if (!donation.donorId && !donation.donorNumber) {
+      return;
+    }
+
+    navigate('/donors', {
+      state: {
+        donorId: donation.donorId ?? undefined,
+        donorNumber: donation.donorNumber || undefined,
+      },
+    });
   };
 
   const handleEditSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -726,6 +741,15 @@ export default function DonationsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleOpenDonorCard(donation)}
+                          disabled={!donation.donorId && !donation.donorNumber}
+                          className="inline-flex h-9 w-9 items-center justify-center text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-full transition-colors"
+                          aria-label="פתח כרטיס תורם"
+                        >
+                          <IdCard className="h-4 w-4" />
+                          <span className="sr-only">פתח כרטיס תורם</span>
+                        </button>
                         <button
                           onClick={() => openEditModal(donation)}
                           className="inline-flex h-9 w-9 items-center justify-center text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"

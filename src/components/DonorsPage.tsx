@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X, Upload, Pencil } from 'lucide-react';
 import { HDate } from '@hebcal/core';
 
@@ -49,11 +50,20 @@ export default function DonorsPage() {
     { senderName: 'בני ירושלים', label: 'שלח מייל בשם בני ירושלים' }
   ] as const;
   type SenderOption = (typeof SENDER_OPTIONS)[number]['senderName'];
+  type DonorNavigationState = {
+    donorId?: string | number | null;
+    donorNumber?: string | null;
+  } | null;
+
+  const location = useLocation();
+  const navigate = useNavigate();
+  const donorNavigationState = location.state as DonorNavigationState;
 
   const getDefaultSenderByFundNumber = (fundNumber?: string | null): SenderOption =>
     fundNumber?.trim() === '6' ? 'בני ירושלים' : 'צדקת עניי ארץ ישראל';
 
   const [donors, setDonors] = useState<Donor[]>([]);
+  const [donorsLoaded, setDonorsLoaded] = useState(false);
 
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
   const [showAddDonor, setShowAddDonor] = useState(false);
@@ -114,6 +124,7 @@ export default function DonorsPage() {
   const [selectedSenders, setSelectedSenders] = useState<Record<string, SenderOption>>({});
   const [activeDonorTab, setActiveDonorTab] = useState<'details' | 'donations' | 'prayer' | 'yahrzeit'>('details');
   const modalSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const hasProcessedNavigationState = useRef(false);
 
   const isNameObject = (entry: DonorNameEntry): entry is Exclude<DonorNameEntry, string> =>
     typeof entry === 'object' && entry !== null;
@@ -379,8 +390,45 @@ export default function DonorsPage() {
       })
       .catch(err => {
         console.error('Failed to load donors', err);
+      })
+      .finally(() => {
+        setDonorsLoaded(true);
       });
   }, []);
+
+  useEffect(() => {
+    if (!donorsLoaded) {
+      return;
+    }
+
+    if (hasProcessedNavigationState.current) {
+      return;
+    }
+
+    if (!donorNavigationState) {
+      hasProcessedNavigationState.current = true;
+      return;
+    }
+
+    const { donorId, donorNumber } = donorNavigationState;
+    const matchedDonor = donors.find(donor => {
+      if (donorId != null) {
+        return String(donor.id) === String(donorId);
+      }
+      if (donorNumber) {
+        return donor.donorNumber === donorNumber;
+      }
+      return false;
+    });
+
+    if (matchedDonor) {
+      setSelectedDonor(matchedDonor);
+      setActiveDonorTab('details');
+    }
+
+    hasProcessedNavigationState.current = true;
+    navigate(location.pathname, { replace: true });
+  }, [donorsLoaded, donors, donorNavigationState, navigate, location.pathname]);
 
   const handleAddDonor = async () => {
     if (newDonor.donorNumber && newDonor.fullName && newDonor.email) {
