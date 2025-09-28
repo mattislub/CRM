@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash, X } from 'lucide-react';
 import { HDate } from '@hebcal/core';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -231,6 +231,8 @@ const toDonationRecord = (donation: ApiDonationRecord): DonationRecord => ({
 
 export default function DonationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DonationStatus>('all');
   const [donations, setDonations] = useState<DonationRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -247,6 +249,7 @@ export default function DonationsPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const modalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -281,6 +284,38 @@ export default function DonationsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'F5') {
+        event.preventDefault();
+        setModalSearchTerm(searchTerm);
+        setIsSearchModalOpen(true);
+      }
+
+      if (event.key === 'Escape') {
+        setIsSearchModalOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (isSearchModalOpen) {
+      modalSearchInputRef.current?.focus();
+      modalSearchInputRef.current?.select();
+    }
+  }, [isSearchModalOpen]);
+
+  const handleModalSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearchTerm(modalSearchTerm);
+    setIsSearchModalOpen(false);
+  };
 
   const filteredDonations = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -506,10 +541,59 @@ export default function DonationsPage() {
 
   return (
     <div className="space-y-6">
+      {isSearchModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          onClick={() => setIsSearchModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-lg w-full max-w-md p-6"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">חיפוש תרומות</h2>
+              <button
+                type="button"
+                onClick={() => setIsSearchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="סגור חלון החיפוש"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleModalSearch} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="donations-modal-search">
+                  מה תרצו לחפש?
+                </label>
+                <input
+                  id="donations-modal-search"
+                  ref={modalSearchInputRef}
+                  type="text"
+                  value={modalSearchTerm}
+                  onChange={event => setModalSearchTerm(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="הקלידו שם תורם או מייל"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                >
+                  חפש
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">תרומות</h1>
           <p className="text-gray-600 mt-2">ניהול ומעקב אחרי תרומות שהתקבלו במערכת</p>
+          <p className="text-sm text-gray-500 mt-1">לחיצה על F5 תפתח חלון חיפוש.</p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
