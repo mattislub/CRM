@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { IdCard, Mail, Pencil, Search, Filter, Calendar, HandCoins, Trash, X } from 'lucide-react';
+import {
+  IdCard,
+  Mail,
+  Pencil,
+  Search,
+  Filter,
+  Calendar,
+  HandCoins,
+  Trash,
+  X,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown
+} from 'lucide-react';
 import { HDate } from '@hebcal/core';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -36,6 +49,8 @@ interface DonationRecord {
   emailSent: boolean;
   pdfUrl?: string;
 }
+
+type SortField = 'donorName' | 'donorEmail' | 'date' | 'fundNumber' | 'amount' | 'status';
 
 const DEFAULT_SENDER = 'צדקת עניי ארץ ישראל';
 const TORAH_SENDER = 'בני ירושלים';
@@ -242,6 +257,8 @@ export default function DonationsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingDonation, setEditingDonation] = useState<DonationRecord | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [editForm, setEditForm] = useState({
     amount: '',
     date: '',
@@ -322,7 +339,7 @@ export default function DonationsPage() {
   const filteredDonations = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return donations.filter(donation => {
+    const filtered = donations.filter(donation => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         donation.donorName.toLowerCase().includes(normalizedSearch) ||
@@ -335,7 +352,70 @@ export default function DonationsPage() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [donations, searchTerm, statusFilter]);
+
+    const sorted = [...filtered].sort((a, b) => {
+      const directionMultiplier = sortDirection === 'asc' ? 1 : -1;
+
+      switch (sortField) {
+        case 'amount':
+          return directionMultiplier * ((a.amount ?? 0) - (b.amount ?? 0));
+        case 'date': {
+          const dateA = a.date ? new Date(a.date).getTime() : 0;
+          const dateB = b.date ? new Date(b.date).getTime() : 0;
+          return directionMultiplier * (dateA - dateB);
+        }
+        case 'donorEmail':
+          return (
+            directionMultiplier *
+            a.donorEmail.localeCompare(b.donorEmail, undefined, { sensitivity: 'base' })
+          );
+        case 'fundNumber':
+          return (
+            directionMultiplier *
+            a.fundNumber.localeCompare(b.fundNumber, undefined, { sensitivity: 'base', numeric: true })
+          );
+        case 'status':
+          return directionMultiplier * a.status.localeCompare(b.status, undefined, { sensitivity: 'base' });
+        case 'donorName':
+        default:
+          return directionMultiplier * a.donorName.localeCompare(b.donorName, undefined, { sensitivity: 'base' });
+      }
+    });
+
+    return sorted;
+  }, [donations, searchTerm, statusFilter, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    setSortField(prevField => {
+      if (prevField === field) {
+        setSortDirection(prevDirection => (prevDirection === 'asc' ? 'desc' : 'asc'));
+        return prevField;
+      }
+
+      setSortDirection(field === 'date' ? 'desc' : 'asc');
+      return field;
+    });
+  };
+
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ChevronsUpDown className="h-3.5 w-3.5 text-gray-300" aria-hidden="true" />;
+    }
+
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="h-3.5 w-3.5 text-gray-500" aria-hidden="true" />
+    ) : (
+      <ChevronDown className="h-3.5 w-3.5 text-gray-500" aria-hidden="true" />
+    );
+  };
+
+  const getAriaSort = (field: SortField): 'none' | 'ascending' | 'descending' => {
+    if (sortField !== field) {
+      return 'none';
+    }
+
+    return sortDirection === 'asc' ? 'ascending' : 'descending';
+  };
 
   const totalAmount = useMemo(
     () => donations.reduce((sum, donation) => sum + (Number.isFinite(donation.amount) ? donation.amount : 0), 0),
@@ -693,12 +773,84 @@ export default function DonationsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">תורם</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">אימייל</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">תאריך</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">מס_קרן</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">סכום</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">סטטוס</th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  aria-sort={getAriaSort('donorName')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort('donorName')}
+                    className="flex w-full items-center justify-end gap-1"
+                  >
+                    <span>תורם</span>
+                    {renderSortIcon('donorName')}
+                  </button>
+                </th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  aria-sort={getAriaSort('donorEmail')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort('donorEmail')}
+                    className="flex w-full items-center justify-end gap-1"
+                  >
+                    <span>אימייל</span>
+                    {renderSortIcon('donorEmail')}
+                  </button>
+                </th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  aria-sort={getAriaSort('date')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort('date')}
+                    className="flex w-full items-center justify-end gap-1"
+                  >
+                    <span>תאריך</span>
+                    {renderSortIcon('date')}
+                  </button>
+                </th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  aria-sort={getAriaSort('fundNumber')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort('fundNumber')}
+                    className="flex w-full items-center justify-end gap-1"
+                  >
+                    <span>מס_קרן</span>
+                    {renderSortIcon('fundNumber')}
+                  </button>
+                </th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  aria-sort={getAriaSort('amount')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort('amount')}
+                    className="flex w-full items-center justify-end gap-1"
+                  >
+                    <span>סכום</span>
+                    {renderSortIcon('amount')}
+                  </button>
+                </th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  aria-sort={getAriaSort('status')}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort('status')}
+                    className="flex w-full items-center justify-end gap-1"
+                  >
+                    <span>סטטוס</span>
+                    {renderSortIcon('status')}
+                  </button>
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider text-center">פעולות</th>
               </tr>
             </thead>
