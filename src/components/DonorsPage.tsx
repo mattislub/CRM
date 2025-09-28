@@ -902,7 +902,7 @@ export default function DonorsPage() {
 
     setFocusedDonorIndex(prev => {
       if (prev == null) {
-        return prev;
+        return 0;
       }
 
       if (prev >= filteredDonors.length) {

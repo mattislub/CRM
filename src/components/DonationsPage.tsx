@@ -399,7 +399,7 @@ export default function DonationsPage() {
 
     setFocusedDonationIndex(prev => {
       if (prev == null) {
-        return prev;
+        return 0;
       }
 
       if (prev >= filteredDonations.length) {
