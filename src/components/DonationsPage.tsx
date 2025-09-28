@@ -937,6 +937,7 @@ export default function DonationsPage() {
                       tabIndex={isTabStop ? 0 : -1}
                       onFocus={() => setFocusedDonationIndex(index)}
                       onKeyDown={event => handleDonationRowKeyDown(event, index, donation)}
+                      onDoubleClick={() => openEditModal(donation)}
                     >
 
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
