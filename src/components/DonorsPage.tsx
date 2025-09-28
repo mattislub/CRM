@@ -1934,7 +1934,10 @@ export default function DonorsPage() {
                 aria-expanded={selectedDonor?.id === donor.id}
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4 space-x-reverse">
+                  <div
+                    className="flex items-center space-x-4 space-x-reverse"
+                    onDoubleClick={() => setSelectedDonor(donor)}
+                  >
                     <div className="bg-blue-100 rounded-full p-3">
                       <Users className="h-6 w-6 text-blue-600" />
                     </div>

@@ -920,6 +920,7 @@ export default function DonationsPage() {
                   </td>
                 </tr>
               ) : filteredDonations.length > 0 ? (
+
                 filteredDonations.map((donation, index) => {
                   const isActiveRow = focusedDonationIndex === index;
                   const isTabStop = focusedDonationIndex == null ? index === 0 : isActiveRow;
@@ -937,6 +938,7 @@ export default function DonationsPage() {
                       onFocus={() => setFocusedDonationIndex(index)}
                       onKeyDown={event => handleDonationRowKeyDown(event, index, donation)}
                     >
+
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex flex-col">
                         <span>{donation.donorName}</span>
