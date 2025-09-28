@@ -269,6 +269,8 @@ export default function DonationsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const modalSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const donationRowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+  const [focusedDonationIndex, setFocusedDonationIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -384,6 +386,62 @@ export default function DonationsPage() {
 
     return sorted;
   }, [donations, searchTerm, statusFilter, sortField, sortDirection]);
+
+  useEffect(() => {
+    donationRowRefs.current = donationRowRefs.current.slice(0, filteredDonations.length);
+  }, [filteredDonations.length]);
+
+  useEffect(() => {
+    if (filteredDonations.length === 0) {
+      setFocusedDonationIndex(null);
+      return;
+    }
+
+    setFocusedDonationIndex(prev => {
+      if (prev == null) {
+        return prev;
+      }
+
+      if (prev >= filteredDonations.length) {
+        return filteredDonations.length - 1;
+      }
+
+      return prev;
+    });
+  }, [filteredDonations.length]);
+
+  useEffect(() => {
+    if (focusedDonationIndex == null) {
+      return;
+    }
+    const element = donationRowRefs.current[focusedDonationIndex];
+    element?.focus();
+  }, [focusedDonationIndex, filteredDonations.length]);
+
+  const focusDonationRow = (index: number) => {
+    if (index < 0 || index >= filteredDonations.length) {
+      return;
+    }
+
+    setFocusedDonationIndex(index);
+  };
+
+  const handleDonationRowKeyDown = (
+    event: React.KeyboardEvent<HTMLTableRowElement>,
+    index: number,
+    donation: DonationRecord,
+  ) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusDonationRow(Math.min(filteredDonations.length - 1, index + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusDonationRow(Math.max(0, index - 1));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      openEditModal(donation);
+    }
+  };
 
   const handleSort = (field: SortField) => {
     setSortField(prevField => {
@@ -862,8 +920,23 @@ export default function DonationsPage() {
                   </td>
                 </tr>
               ) : filteredDonations.length > 0 ? (
-                filteredDonations.map(donation => (
-                  <tr key={donation.id} className="hover:bg-gray-50 transition-colors">
+                filteredDonations.map((donation, index) => {
+                  const isActiveRow = focusedDonationIndex === index;
+                  const isTabStop = focusedDonationIndex == null ? index === 0 : isActiveRow;
+
+                  return (
+                    <tr
+                      key={donation.id}
+                      ref={element => {
+                        donationRowRefs.current[index] = element;
+                      }}
+                      className={`hover:bg-gray-50 transition-colors focus:outline-none ${
+                        isActiveRow ? 'bg-blue-50/50 ring-2 ring-blue-400/60' : ''
+                      }`}
+                      tabIndex={isTabStop ? 0 : -1}
+                      onFocus={() => setFocusedDonationIndex(index)}
+                      onKeyDown={event => handleDonationRowKeyDown(event, index, donation)}
+                    >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex flex-col">
                         <span>{donation.donorName}</span>
@@ -931,7 +1004,8 @@ export default function DonationsPage() {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={7} className="px-6 py-16 text-center text-gray-500 text-sm">

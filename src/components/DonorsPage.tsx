@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Users, Mail, Plus, Eye, Send, FileText, CheckCircle, X, Upload, Pencil } from 'lucide-react';
 import { HDate } from '@hebcal/core';
@@ -125,6 +125,8 @@ export default function DonorsPage() {
   const [activeDonorTab, setActiveDonorTab] = useState<'details' | 'donations' | 'prayer' | 'yahrzeit'>('details');
   const modalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const hasProcessedNavigationState = useRef(false);
+  const donorRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [focusedDonorIndex, setFocusedDonorIndex] = useState<number | null>(null);
 
   const isNameObject = (entry: DonorNameEntry): entry is Exclude<DonorNameEntry, string> =>
     typeof entry === 'object' && entry !== null;
@@ -871,20 +873,72 @@ export default function DonorsPage() {
     donor.donations.some(donation => !donation.emailSent)
   );
 
-  const filteredDonors = donors.filter(donor => {
-    const term = searchTerm.toLowerCase();
-    if (term) {
-      const matches =
-        donor.fullName.toLowerCase().includes(term) ||
-        donor.email.toLowerCase().includes(term) ||
-        donor.donorNumber.toLowerCase().includes(term);
-      if (!matches) return false;
+  const filteredDonors = useMemo(() => {
+    return donors.filter(donor => {
+      const term = searchTerm.toLowerCase();
+      if (term) {
+        const matches =
+          donor.fullName.toLowerCase().includes(term) ||
+          donor.email.toLowerCase().includes(term) ||
+          donor.donorNumber.toLowerCase().includes(term);
+        if (!matches) return false;
+      }
+      if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
+      if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
+      if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
+      return true;
+    });
+  }, [donors, searchTerm, minTotal, maxTotal, onlyPending]);
+
+  useEffect(() => {
+    donorRowRefs.current = donorRowRefs.current.slice(0, filteredDonors.length);
+  }, [filteredDonors.length]);
+
+  useEffect(() => {
+    if (filteredDonors.length === 0) {
+      setFocusedDonorIndex(null);
+      return;
     }
-    if (minTotal && donor.totalDonations < parseFloat(minTotal)) return false;
-    if (maxTotal && donor.totalDonations > parseFloat(maxTotal)) return false;
-    if (onlyPending && !donor.donations.some(d => !d.emailSent)) return false;
-    return true;
-  });
+
+    setFocusedDonorIndex(prev => {
+      if (prev == null) {
+        return prev;
+      }
+
+      if (prev >= filteredDonors.length) {
+        return filteredDonors.length - 1;
+      }
+
+      return prev;
+    });
+  }, [filteredDonors.length]);
+
+  useEffect(() => {
+    if (focusedDonorIndex == null) return;
+    const element = donorRowRefs.current[focusedDonorIndex];
+    element?.focus();
+  }, [focusedDonorIndex, filteredDonors.length]);
+
+  const focusDonorRow = (index: number) => {
+    if (index < 0 || index >= filteredDonors.length) {
+      return;
+    }
+
+    setFocusedDonorIndex(index);
+  };
+
+  const handleDonorRowKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, index: number, donor: Donor) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusDonorRow(Math.min(filteredDonors.length - 1, index + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusDonorRow(Math.max(0, index - 1));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      setSelectedDonor(prev => (prev?.id === donor.id ? null : donor));
+    }
+  };
 
   const renderDonorModal = (donor: Donor) => {
     const prayerNames = Array.isArray(donor.prayerNames) ? donor.prayerNames : [];
@@ -1860,11 +1914,25 @@ export default function DonorsPage() {
         </div>
 
         <div className="divide-y divide-gray-200">
-          {filteredDonors.map((donor) => {
+          {filteredDonors.map((donor, index) => {
             const pendingEmails = donor.donations.filter(donation => !donation.emailSent).length;
+            const isActiveRow = focusedDonorIndex === index;
+            const isTabStop = focusedDonorIndex == null ? index === 0 : isActiveRow;
 
             return (
-              <div key={donor.id} className="px-6 py-4">
+              <div
+                key={donor.id}
+                ref={element => {
+                  donorRowRefs.current[index] = element;
+                }}
+                className={`px-6 py-4 focus:outline-none ${
+                  isActiveRow ? 'bg-blue-50/60 ring-2 ring-blue-500/60' : ''
+                }`}
+                tabIndex={isTabStop ? 0 : -1}
+                onFocus={() => setFocusedDonorIndex(index)}
+                onKeyDown={event => handleDonorRowKeyDown(event, index, donor)}
+                aria-expanded={selectedDonor?.id === donor.id}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4 space-x-reverse">
                     <div className="bg-blue-100 rounded-full p-3">
