@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  IdCard,
+  UserRound,
   Mail,
   Pencil,
   Search,
@@ -974,7 +974,7 @@ export default function DonationsPage() {
                           className="inline-flex h-9 w-9 items-center justify-center text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed rounded-full transition-colors"
                           aria-label="פתח כרטיס תורם"
                         >
-                          <IdCard className="h-4 w-4" />
+                          <UserRound className="h-4 w-4" />
                           <span className="sr-only">פתח כרטיס תורם</span>
                         </button>
                         <button
