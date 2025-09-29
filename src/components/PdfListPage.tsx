@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -32,6 +33,7 @@ interface Assignment {
   fullName: string;
   amount: number;
   donationDate: string;
+  fundNumber?: string | null;
 }
 
 interface UploadedFile {
@@ -45,12 +47,131 @@ interface UploadedFile {
   url?: string;
 }
 
+type ColumnKey = 'donorNumber' | 'fullName' | 'amount' | 'description' | 'date' | 'fundNumber';
+
+interface HeaderOption {
+  raw: string;
+  display: string;
+}
+
+interface MappingModalState {
+  pdf: SavedPdf;
+  base64: string;
+  headers: HeaderOption[];
+  previewRows: string[][];
+}
+
+type ColumnMapping = Record<ColumnKey, number | null>;
+
+const columnLabels: Record<ColumnKey, string> = {
+  donorNumber: 'מספר תורם',
+  fullName: 'שם התורם',
+  amount: 'סכום התרומה',
+  description: 'תיאור / ייעוד',
+  date: 'תאריך התרומה',
+  fundNumber: 'מספר קרן',
+};
+
+const createEmptyMapping = (): ColumnMapping => ({
+  donorNumber: null,
+  fullName: null,
+  amount: null,
+  description: null,
+  date: null,
+  fundNumber: null,
+});
+
+const formatPreviewValue = (value: unknown): string => {
+  if (value == null) {
+    return '';
+  }
+  if (value instanceof Date) {
+    return value.toLocaleDateString('he-IL');
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toString() : '';
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'כן' : 'לא';
+  }
+  return value.toString();
+};
+
+const inferColumnMapping = (headers: HeaderOption[]): ColumnMapping => {
+  const mapping = createEmptyMapping();
+
+  headers.forEach((header, index) => {
+    const normalized = header.raw.replace(/[\s_-]/g, '').toLowerCase();
+    if (!normalized) {
+      return;
+    }
+
+    if (
+      mapping.donorNumber == null &&
+      (normalized.includes('מספרתורם') ||
+        (normalized.includes('מספר') && normalized.includes('תורם')) ||
+        normalized.includes('donornumber') ||
+        normalized === 'id')
+    ) {
+      mapping.donorNumber = index;
+      return;
+    }
+
+    if (
+      mapping.fullName == null &&
+      ((normalized.includes('שם') && !normalized.includes('קרן')) || normalized.includes('name'))
+    ) {
+      mapping.fullName = index;
+      return;
+    }
+
+    if (
+      mapping.amount == null &&
+      (normalized.includes('סכום') || normalized.includes('amount') || normalized.includes('sum'))
+    ) {
+      mapping.amount = index;
+      return;
+    }
+
+    if (
+      mapping.description == null &&
+      (normalized.includes('תיאור') ||
+        normalized.includes('ייעוד') ||
+        normalized.includes('description') ||
+        normalized.includes('purpose') ||
+        normalized.includes('הערה') ||
+        normalized.includes('note'))
+    ) {
+      mapping.description = index;
+      return;
+    }
+
+    if (mapping.date == null && (normalized.includes('תאריך') || normalized.includes('date'))) {
+      mapping.date = index;
+      return;
+    }
+
+    if (
+      mapping.fundNumber == null &&
+      (normalized.includes('קרן') || normalized.includes('fund') || normalized.includes('מסקרן'))
+    ) {
+      mapping.fundNumber = index;
+    }
+  });
+
+  return mapping;
+};
+
 export default function PdfListPage() {
   const [pdfs, setPdfs] = useState<SavedPdf[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const [mappingModal, setMappingModal] = useState<MappingModalState | null>(null);
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>(createEmptyMapping);
+  const [mappingError, setMappingError] = useState<string | null>(null);
+  const [assigningExcel, setAssigningExcel] = useState(false);
 
   const fetchPdfs = () => {
     fetch(`${API_URL}/pdfs`)
@@ -80,33 +201,141 @@ export default function PdfListPage() {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = async ev => {
-          const base64 = (ev.target?.result as string).split(',')[1];
-          const res = await fetch(`${API_URL}/assign-excel`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: pdf.name, content: base64 }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            setPdfs(prev =>
-              prev.map(p =>
-                p.name === pdf.name
-                  ? {
-                      ...p,
-                      excelAssigned: true,
-                      assignments: data.assignments,
-                      showAssignments: true,
-                    }
-                  : p
-              )
+        reader.onload = ev => {
+          const result = ev.target?.result;
+          if (typeof result !== 'string') {
+            setMappingError('אירעה שגיאה בטעינת הקובץ. נסו שוב.');
+            setMappingModal({ pdf, base64: '', headers: [], previewRows: [] });
+            setColumnMapping(createEmptyMapping());
+            return;
+          }
+
+          const base64 = result.split(',')[1];
+
+          try {
+            const workbook = XLSX.read(base64, { type: 'base64' });
+            if (workbook.SheetNames.length === 0) {
+              setMappingError('הקובץ לא מכיל גיליונות נתונים.');
+              setMappingModal({ pdf, base64: '', headers: [], previewRows: [] });
+              setColumnMapping(createEmptyMapping());
+              return;
+            }
+
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            if (!sheet) {
+              setMappingError('לא נמצא גיליון נתונים בקובץ.');
+              setMappingModal({ pdf, base64: '', headers: [], previewRows: [] });
+              setColumnMapping(createEmptyMapping());
+              return;
+            }
+
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as Array<Array<unknown>>;
+            const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+
+            if (columnCount === 0) {
+              setMappingError('הקובץ לא מכיל עמודות נתונים.');
+              setMappingModal({ pdf, base64: '', headers: [], previewRows: [] });
+              setColumnMapping(createEmptyMapping());
+              return;
+            }
+
+            const headerRow = rows[0] || [];
+            const dataRows = rows.slice(1);
+
+            const headers: HeaderOption[] = Array.from({ length: columnCount }, (_, index) => {
+              const rawValue = headerRow[index];
+              const raw = rawValue == null ? '' : rawValue.toString().trim();
+              const display = raw || `עמודה ${index + 1}`;
+              return { raw, display };
+            });
+
+            const previewRows = dataRows.slice(0, 5).map(row =>
+              Array.from({ length: columnCount }, (_, colIndex) => formatPreviewValue(row[colIndex]))
             );
+
+            setColumnMapping(inferColumnMapping(headers));
+            setMappingModal({ pdf, base64, headers, previewRows });
+            setMappingError(null);
+          } catch (err) {
+            console.error('Failed to parse Excel file', err);
+            setMappingError('אירעה שגיאה בקריאת הקובץ. ודאו כי הקובץ בפורמט Excel תקין.');
+            setMappingModal({ pdf, base64: '', headers: [], previewRows: [] });
+            setColumnMapping(createEmptyMapping());
           }
         };
         reader.readAsDataURL(file);
       }
     };
     input.click();
+  };
+
+  const closeMappingModal = () => {
+    setMappingModal(null);
+    setColumnMapping(createEmptyMapping());
+    setMappingError(null);
+    setAssigningExcel(false);
+  };
+
+  const handleConfirmMapping = async () => {
+    if (!mappingModal || !mappingModal.base64) {
+      return;
+    }
+
+    if (columnMapping.donorNumber == null) {
+      setMappingError('בחרו עמודה עבור מספר התורם.');
+      return;
+    }
+
+    if (columnMapping.amount == null) {
+      setMappingError('בחרו עמודה עבור סכום התרומה.');
+      return;
+    }
+
+    setAssigningExcel(true);
+    setMappingError(null);
+
+    try {
+      const payloadMapping = Object.fromEntries(
+        (Object.entries(columnMapping) as Array<[ColumnKey, number | null]>)
+          .filter(([, value]) => value != null)
+          .map(([key, value]) => [key, value])
+      );
+
+      const res = await fetch(`${API_URL}/assign-excel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: mappingModal.pdf.name,
+          content: mappingModal.base64,
+          mapping: payloadMapping,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setPdfs(prev =>
+          prev.map(p =>
+            p.name === mappingModal.pdf.name
+              ? {
+                  ...p,
+                  excelAssigned: true,
+                  assignments: data.assignments,
+                  showAssignments: true,
+                }
+              : p
+          )
+        );
+        closeMappingModal();
+      } else {
+        setMappingError(data.message || 'אירעה שגיאה בעת שיוך הקובץ.');
+      }
+    } catch (err) {
+      console.error('Failed to assign excel', err);
+      setMappingError('אירעה שגיאה בעת שיוך הקובץ.');
+    } finally {
+      setAssigningExcel(false);
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -257,6 +486,15 @@ export default function PdfListPage() {
       )
     );
   };
+
+  const columnKeys: ColumnKey[] = ['donorNumber', 'fullName', 'amount', 'description', 'date', 'fundNumber'];
+  const confirmDisabled =
+    assigningExcel ||
+    !mappingModal ||
+    !mappingModal.base64 ||
+    mappingModal.headers.length === 0 ||
+    columnMapping.donorNumber == null ||
+    columnMapping.amount == null;
 
   return (
     <div className="space-y-8">
@@ -511,7 +749,10 @@ export default function PdfListPage() {
                       <ul className="list-disc pr-5 space-y-1">
                         {pdf.assignments.map((a, idx) => (
                           <li key={idx}>
-                            {`${a.donorNumber} - ${a.fullName} - ${a.amount} - ${new Date(a.donationDate).toLocaleDateString('he-IL')}`}
+                            {`${a.donorNumber} - ${a.fullName} - ${a.amount} - ${new Date(
+                              a.donationDate
+                            ).toLocaleDateString('he-IL')}`}
+                            {a.fundNumber ? ` - קרן ${a.fundNumber}` : ''}
                           </li>
                         ))}
                       </ul>
@@ -530,6 +771,121 @@ export default function PdfListPage() {
           </tbody>
         </table>
       </div>
+
+      {mappingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">שיוך עמודות לקובץ תרומות</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  התאימו בין עמודות הקובץ לשדות התרומה הרצויים. עמודות שלא תבחרו לא ייובאו.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeMappingModal}
+                className="text-gray-400 transition-colors hover:text-gray-600"
+                aria-label="סגור חלון שיוך עמודות"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {mappingModal.headers.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {columnKeys.map(key => (
+                  <div key={key}>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">{columnLabels[key]}</label>
+                    <select
+                      value={columnMapping[key] ?? 'none'}
+                      onChange={event => {
+                        const value = event.target.value;
+                        setColumnMapping(prev => ({
+                          ...prev,
+                          [key]: value === 'none' ? null : Number.parseInt(value, 10),
+                        }));
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      <option value="none">ללא שיוך</option>
+                      {mappingModal.headers.map((header, index) => (
+                        <option key={`${header.display}-${index}`} value={index}>
+                          {header.display}
+                        </option>
+                      ))}
+                    </select>
+                    {key === 'donorNumber' && (
+                      <p className="mt-1 text-xs text-gray-500">חובה לבחור עמודה זו כדי לשייך לתורמים קיימים.</p>
+                    )}
+                    {key === 'amount' && (
+                      <p className="mt-1 text-xs text-gray-500">חובה לבחור עמודה זו כדי לקלוט את סכום התרומה.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                {mappingError || 'לא נמצאו עמודות נתונים בקובץ. סגרו חלון זה ונסו להעלות קובץ אחר.'}
+              </div>
+            )}
+
+            {mappingModal.headers.length > 0 && mappingModal.previewRows.length > 0 && (
+              <div className="mt-6">
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">תצוגה מקדימה של חמש השורות הראשונות</h3>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="min-w-full divide-y divide-gray-200 text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {mappingModal.headers.map((header, index) => (
+                          <th key={index} className="px-3 py-2 text-right font-medium text-gray-600">
+                            {header.display}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {mappingModal.previewRows.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {mappingModal.headers.map((_, colIndex) => (
+                            <td key={colIndex} className="px-3 py-2 text-gray-700">
+                              {row[colIndex] ?? ''}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {mappingError && mappingModal.headers.length > 0 && (
+              <p className="mt-4 text-sm text-red-600">{mappingError}</p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeMappingModal}
+                className="rounded-full px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-800"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMapping}
+                disabled={confirmDisabled}
+                className={`rounded-full px-4 py-2 text-sm font-medium text-white transition-colors ${
+                  confirmDisabled ? 'cursor-not-allowed bg-blue-300' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {assigningExcel ? 'משייך...' : 'בצע שיוך'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

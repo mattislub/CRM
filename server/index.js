@@ -745,10 +745,22 @@ const server = createServer((req, res) => {
     });
     req.on('end', async () => {
       try {
-        const { name, content } = JSON.parse(body);
+        const { name, content, mapping } = JSON.parse(body);
+        if (!name || !content) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Invalid request body' }));
+          return;
+        }
+
         const buffer = Buffer.from(content, 'base64');
         const workbook = XLSX.read(buffer, { type: 'buffer' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!sheet) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Excel sheet not found' }));
+          return;
+        }
+
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         const headerRow = rows[0] || [];
         const dateColumnIndex = headerRow.findIndex(cell => {
@@ -763,6 +775,47 @@ const server = createServer((req, res) => {
           }
           return cell.toString().trim() === 'מס_קרן';
         });
+
+        const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+
+        const parseMappingIndex = value => {
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            return Math.trunc(value);
+          }
+          if (typeof value === 'string' && value.trim() !== '') {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isNaN(parsed)) {
+              return parsed;
+            }
+          }
+          return undefined;
+        };
+
+        const sanitizeIndex = index => {
+          if (typeof index !== 'number' || Number.isNaN(index)) {
+            return undefined;
+          }
+          const normalized = Math.trunc(index);
+          if (normalized < 0 || normalized >= columnCount) {
+            return undefined;
+          }
+          return normalized;
+        };
+
+        const rawMapping = typeof mapping === 'object' && mapping !== null ? mapping : {};
+        const mappedDonorIndex = sanitizeIndex(parseMappingIndex(rawMapping.donorNumber));
+        const mappedFullNameIndex = sanitizeIndex(parseMappingIndex(rawMapping.fullName));
+        const mappedAmountIndex = sanitizeIndex(parseMappingIndex(rawMapping.amount));
+        const mappedDescriptionIndex = sanitizeIndex(parseMappingIndex(rawMapping.description));
+        const mappedDateIndex = sanitizeIndex(parseMappingIndex(rawMapping.date));
+        const mappedFundNumberIndex = sanitizeIndex(parseMappingIndex(rawMapping.fundNumber));
+
+        const fallbackDonorIndex = sanitizeIndex(0);
+        const fallbackAmountIndex = sanitizeIndex(4);
+        const fallbackDescriptionIndex = sanitizeIndex(2);
+        const fallbackDateIndex = sanitizeIndex(12);
+        const headerDateIndex = sanitizeIndex(dateColumnIndex);
+        const headerFundIndex = sanitizeIndex(fundNumberColumnIndex);
 
         const parseExcelDate = value => {
           if (value == null || value === '') {
@@ -786,6 +839,41 @@ const server = createServer((req, res) => {
           }
           return parsed;
         };
+
+        const parseAmountValue = value => {
+          if (value == null || value === '') {
+            return 0;
+          }
+          if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : 0;
+          }
+          const text = value.toString().trim();
+          if (!text) {
+            return 0;
+          }
+          let normalized = text.replace(/[^0-9.,-]/g, '');
+          if (normalized.includes(',') && !normalized.includes('.')) {
+            normalized = normalized.replace(/,/g, '.');
+          } else {
+            normalized = normalized.replace(/,/g, '');
+          }
+          const parsed = Number.parseFloat(normalized);
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        const getCell = (row, index) => {
+          if (index == null) {
+            return undefined;
+          }
+          return row[index];
+        };
+
+        const toTrimmedString = value => {
+          if (value == null) {
+            return '';
+          }
+          return value.toString().trim();
+        };
         const { rows: pageRows } = await pool.query(
           'SELECT file_url FROM pdf_pages WHERE original_name = $1 ORDER BY page_number',
           [name]
@@ -803,17 +891,47 @@ const server = createServer((req, res) => {
         const pages = pageRows.map(r => r.file_url);
         const assignments = [];
         for (let i = 1; i < rows.length && i - 1 < pages.length; i++) {
-          const row = rows[i];
-          const donorNumber = row[0]?.toString() || '';
-          const fullName = `${row[6] || ''} ${row[8] || ''} ${row[7] || ''}`.trim() || 'Unknown Donor';
-          const amount = parseFloat(row[4]) || 0;
-          const dateCellIndex = dateColumnIndex >= 0 ? dateColumnIndex : 12;
-          const donationDate =
-            parseExcelDate(row[dateCellIndex]) || (dateColumnIndex >= 0 ? undefined : parseExcelDate(row[12])) || new Date();
-          const fundNumber =
-            fundNumberColumnIndex >= 0
-              ? (row[fundNumberColumnIndex] != null ? row[fundNumberColumnIndex].toString().trim() : '')
-              : '';
+          const row = Array.isArray(rows[i]) ? rows[i] : [];
+          const donorIndex = mappedDonorIndex ?? fallbackDonorIndex ?? 0;
+          const donorNumber = toTrimmedString(getCell(row, donorIndex));
+
+          let fullName;
+          if (mappedFullNameIndex != null) {
+            fullName = toTrimmedString(getCell(row, mappedFullNameIndex));
+          } else {
+            const combinedName = `${toTrimmedString(getCell(row, 6))} ${toTrimmedString(getCell(row, 8))} ${toTrimmedString(
+              getCell(row, 7)
+            )}`
+              .replace(/\s+/g, ' ')
+              .trim();
+            fullName = combinedName || 'Unknown Donor';
+          }
+          if (!fullName) {
+            fullName = 'Unknown Donor';
+          }
+
+          const amountIndex = mappedAmountIndex ?? fallbackAmountIndex ?? 4;
+          const amount = parseAmountValue(getCell(row, amountIndex));
+
+          const descriptionIndex = mappedDescriptionIndex ?? fallbackDescriptionIndex ?? 2;
+          const description = toTrimmedString(getCell(row, descriptionIndex));
+
+          const fundIndex = mappedFundNumberIndex ?? headerFundIndex;
+          const fundNumber = fundIndex != null ? toTrimmedString(getCell(row, fundIndex)) : '';
+
+          const dateCandidates = [mappedDateIndex, headerDateIndex, fallbackDateIndex].filter(index => index != null);
+          let donationDate;
+          for (const candidate of dateCandidates) {
+            const parsedDate = parseExcelDate(getCell(row, candidate));
+            if (parsedDate) {
+              donationDate = parsedDate;
+              break;
+            }
+          }
+          if (!donationDate) {
+            donationDate = new Date();
+          }
+
           let donorId;
           const existing = await pool.query(
             'SELECT id FROM donors WHERE donor_number = $1',
@@ -830,7 +948,7 @@ const server = createServer((req, res) => {
           }
           await pool.query(
             'INSERT INTO donations(donor_id, amount, donation_date, description, pdf_url, fund_number) VALUES($1, $2, $3, $4, $5, $6)',
-            [donorId, amount, donationDate, row[2] || '', pages[i - 1], fundNumber || null]
+            [donorId, amount, donationDate, description, pages[i - 1], fundNumber || null]
           );
           assignments.push({ donorNumber, fullName, amount, donationDate, fundNumber });
         }
