@@ -286,11 +286,6 @@ export default function PdfListPage() {
       return;
     }
 
-    if (columnMapping.amount == null) {
-      setMappingError('בחרו עמודה עבור סכום התרומה.');
-      return;
-    }
-
     setAssigningExcel(true);
     setMappingError(null);
 
@@ -493,8 +488,7 @@ export default function PdfListPage() {
     !mappingModal ||
     !mappingModal.base64 ||
     mappingModal.headers.length === 0 ||
-    columnMapping.donorNumber == null ||
-    columnMapping.amount == null;
+    columnMapping.donorNumber == null;
 
   return (
     <div className="space-y-8">
@@ -819,7 +813,7 @@ export default function PdfListPage() {
                       <p className="mt-1 text-xs text-gray-500">חובה לבחור עמודה זו כדי לשייך לתורמים קיימים.</p>
                     )}
                     {key === 'amount' && (
-                      <p className="mt-1 text-xs text-gray-500">חובה לבחור עמודה זו כדי לקלוט את סכום התרומה.</p>
+                      <p className="mt-1 text-xs text-gray-500">ניתן להשאיר שדה זה ללא שיוך אם סכום התרומה אינו נדרש.</p>
                     )}
                   </div>
                 ))}
