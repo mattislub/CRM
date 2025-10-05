@@ -811,7 +811,12 @@ const server = createServer((req, res) => {
         const mappedFundNumberIndex = sanitizeIndex(parseMappingIndex(rawMapping.fundNumber));
 
         const fallbackDonorIndex = sanitizeIndex(0);
-        const fallbackAmountIndex = sanitizeIndex(4);
+        const fallbackAmountIndex = Object.prototype.hasOwnProperty.call(
+          rawMapping,
+          'amount'
+        )
+          ? sanitizeIndex(4)
+          : undefined;
         const fallbackDescriptionIndex = sanitizeIndex(2);
         const fallbackDateIndex = sanitizeIndex(12);
         const headerDateIndex = sanitizeIndex(dateColumnIndex);
@@ -910,8 +915,9 @@ const server = createServer((req, res) => {
             fullName = 'Unknown Donor';
           }
 
-          const amountIndex = mappedAmountIndex ?? fallbackAmountIndex ?? 4;
-          const amount = parseAmountValue(getCell(row, amountIndex));
+          const amountIndex = mappedAmountIndex ?? fallbackAmountIndex;
+          const amount =
+            amountIndex != null ? parseAmountValue(getCell(row, amountIndex)) : 0;
 
           const descriptionIndex = mappedDescriptionIndex ?? fallbackDescriptionIndex ?? 2;
           const description = toTrimmedString(getCell(row, descriptionIndex));
