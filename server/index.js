@@ -1,10 +1,3 @@
-console.log('CWD:', process.cwd());
-console.log('ENV sample:', {
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT,
-  SMTP_USER: process.env.SMTP_USER,
-});
-
 import 'dotenv/config';
 import { createServer } from 'http';
 import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir, readFileSync, writeFileSync } from 'fs';
@@ -13,6 +6,12 @@ import { Pool } from 'pg';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import XLSX from 'xlsx';
 
+console.log('CWD:', process.cwd());
+console.log('ENV sample:', {
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_USER: process.env.SMTP_USER,
+});
 const required = [
   'PGHOST',
   'PGUSER',
