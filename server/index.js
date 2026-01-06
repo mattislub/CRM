@@ -1,10 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { appendFile, existsSync, mkdirSync, writeFile, createReadStream, readdir, readFileSync, writeFileSync } from 'fs';
 import { resolve, basename, extname } from 'path';
 import { Pool } from 'pg';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import XLSX from 'xlsx';
+
+dotenv.config({ path: resolve('/root/crm/.env') });
 
 console.log('CWD:', process.cwd());
 console.log('ENV sample:', {
